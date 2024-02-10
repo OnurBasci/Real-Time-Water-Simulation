@@ -1,7 +1,10 @@
 using System;
 using System.Collections;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.Mathematics;
+using UnityEditor.ShaderGraph.Internal;
 using UnityEngine;
 using static UnityEngine.Rendering.DebugUI;
 
@@ -19,6 +22,8 @@ public class FluidShower : MonoBehaviour
     public float dt = 1.0f/120.0f;
     public int numIter = 100;
     public FieldType currentField;
+    public bool activateHorizontalFore = false;
+    public float horizontalForce = 40;
     public enum FieldType
     {
         MFIELD,
@@ -27,27 +32,53 @@ public class FluidShower : MonoBehaviour
         VFIELD
     }
 
+    [NonSerialized] public Dictionary<GameObject, int2> blockInfos;
+
     public const int UFIELD = 0;
     public const int VFIELD = 1;
     public const int SFIELD = 2; //smoke field
 
-    private Fluid fluid;
+    private GameObject[,] blockObjectsArray;
+
+    [NonSerialized] public Fluid fluid;
 
     public void Start()
     {
+        blockObjectsArray = new GameObject[numX, numY];
+
         fluid = new Fluid(density, numX, numY, h, this);
         GenerateGrid(fluid);
+        //fluid.setUp();
     }
 
     public void Update()
     {
         fluid.Simulate(dt, gravity, numIter);
-        GenerateGrid(fluid);
-        fluid.printGrid();
+        simulateGrid(fluid);
     }
 
 
     void GenerateGrid(Fluid fluid)
+    {
+        blockInfos = new Dictionary<GameObject, int2>();
+
+        //if (max_pressure <= 0) max_pressure = gridArray.Min();
+        for (int i = 0; i < numY; i++)
+        {
+            for (int j = 0; j < numX; j++)
+            {
+                Vector3 spawnPosition = new Vector3(j * squareSize, i * squareSize, 0);
+                GameObject square = Instantiate(squarePrefab, spawnPosition, Quaternion.identity);
+                square.transform.localScale = new Vector3(squareSize, squareSize, 1f);
+
+                blockInfos.Add(square, new int2(j, i));
+
+                blockObjectsArray[j, i] = square;
+            }
+        }
+    }
+
+    public void simulateGrid(Fluid fluid)
     {
         float[] gridArray = fluid.m;
         switch (currentField)
@@ -66,24 +97,21 @@ public class FluidShower : MonoBehaviour
                 break;
         }
 
-
         //get maximum pressure
         float max_pressure = gridArray.Max();
-        //if (max_pressure <= 0) max_pressure = gridArray.Min();
-        for (int i = 0; i < numX; i++)
+        float min_pressure = gridArray.Min();
+
+        for (int i = 0; i < numY; i++)
         {
-            for (int j = 0; j < numY; j++)
+            for (int j = 0; j < numX; j++)
             {
-                Vector3 spawnPosition = new Vector3(j * squareSize, i * squareSize, 0);
-                GameObject square = Instantiate(squarePrefab, spawnPosition, Quaternion.identity);
-                square.transform.localScale = new Vector3(squareSize, squareSize, 1f);
 
                 // Set color based on gridArray value
-                float c = gridArray[i* numY + j] / max_pressure;
+                float c = (gridArray[j * numY + i] - min_pressure) / (max_pressure - min_pressure);
 
                 Color color = new Color(c, c, c);
 
-                square.GetComponent<SpriteRenderer>().color = color;
+                blockObjectsArray[j,i].GetComponent<SpriteRenderer>().color = color;
             }
         }
     }
@@ -358,18 +386,34 @@ public class FluidShower : MonoBehaviour
 
         public void addHorizontalForce()
         {
-            for(int i = 0; i < numX; i++)
+            for(int i = 0; i < numY; i++)
             {
-                u[i * numY] = +10;
-                //u[i * numY+1] = 10;
-                m[i * numY] = 1;
+                if (i < numY*1/3 || i > numY*2/3)
+                    continue;
+                m[2 * numY+i] = 1;
+                u[2 * numY + i] = fluidShower.horizontalForce;
+            }
+        }
+
+        public void setUp()
+        {
+            for (int i = 0; i < numY; i++)
+            {
+                if (i < numY * 1 / 3 || i > numY * 2 / 3)
+                    continue;
+                m[2 * numY+i] = 1;
+                //u[2 * numY + i] = fluidShower.horizontalForce;
             }
         }
 
         public void Simulate(float dt, float gravity, int numIters)
         {
             Integrate(dt, gravity);
-            //addHorizontalForce();
+
+            if(fluidShower.activateHorizontalFore)
+            {
+                addHorizontalForce();
+            }
 
             Array.Clear(p, 0, p.Length);
             SolveIncompressibility(numIters, dt);
@@ -379,6 +423,38 @@ public class FluidShower : MonoBehaviour
             AdvectSmoke(dt);
             
         }
+
+        public void setBlocksAsObsticles(HashSet<GameObject> blocks, Vector2 obstacleVelocity)
+        {
+            /*Given a list of coordinates, puts the s values of the coordinates to 0*/
+            int2 coordinate;
+            foreach(GameObject block in blocks)
+            {
+                if (!fluidShower.blockInfos.ContainsKey(block))
+                    continue;
+
+                coordinate = fluidShower.blockInfos[block];
+                s[coordinate.x * numY + coordinate.y] = 0;
+                m[coordinate.x * numY + coordinate.y] = 0;
+                u[coordinate.x * numY + coordinate.y] = obstacleVelocity.x;
+                v[coordinate.x * numY + coordinate.y] = obstacleVelocity.y;
+            }
+        }
+
+        public void setBlocksAsNonObsticles(HashSet<GameObject> blocks)
+        {
+            /*Given a list of coordinates, puts the s values of the coordinates to 0*/
+            int2 coordinate;
+            foreach (GameObject block in blocks)
+            {
+                if (!fluidShower.blockInfos.ContainsKey(block))
+                    continue;
+                Debug.Log("Debolcked object");
+                coordinate = fluidShower.blockInfos[block];
+                s[coordinate.x * numY + coordinate.y] = 1;
+            }
+        }
+
 
         public void printGrid()
         {
