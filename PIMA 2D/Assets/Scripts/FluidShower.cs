@@ -79,7 +79,7 @@ public class FluidShower : MonoBehaviour
                 square.transform.localScale = new Vector3(squareSize, squareSize, 1f);
 
                 // Set color based on gridArray value
-                float c = gridArray[i* numY + j] / max_pressure;
+                float c = gridArray[j* numY + i] / max_pressure;
 
                 Color color = new Color(c, c, c);
 
@@ -145,7 +145,7 @@ public class FluidShower : MonoBehaviour
             {
                 for (int j = 1; j < this.numY - 1; j++)
                 {  
-                    if (this.s[i * n + j] != 0.0f && this.s[i * n + j - 1] != 0.0f)
+                    if (this.s[i * n + j] != 0.0f && this.s[(i-1) * n + j] != 0.0f)
                     {
                         this.v[i * n + j] += gravity * dt;
                     }
@@ -168,26 +168,26 @@ public class FluidShower : MonoBehaviour
                             continue;
 
                         float s = this.s[i * n + j];
-                        float sx0 = this.s[(i - 1) * n + j];
-                        float sx1 = this.s[(i + 1) * n + j];
-                        float sy0 = this.s[i * n + j - 1];
-                        float sy1 = this.s[i * n + j + 1];
+                        float sx0 = this.s[i * n + j-1];
+                        float sx1 = this.s[i * n + j+1];
+                        float sy0 = this.s[(i-1) * n + j];
+                        float sy1 = this.s[(i+1) * n + j];
                         float sum = sx0 + sx1 + sy0 + sy1;
 
                         if (sum == 0.0f)
                             continue;
 
-                        float div = this.u[(i + 1) * n + j] - this.u[i * n + j] +
-                                    this.v[i * n + j + 1] - this.v[i * n + j];
+                        float div = this.u[i * n + j+1] - this.u[i * n + j] +
+                                    this.v[(i+1) * n + j] - this.v[i * n + j];
 
-                        float p = -div / sum;
+                        float p = div / sum; // - to chcek
                         p *= fluidShower.overRelaxation;
                         this.p[i * n + j] += cp * p;
 
-                        this.u[i * n + j] -= sx0 * p;
-                        this.u[(i + 1) * n + j] += sx1 * p;
-                        this.v[i * n + j] -= sy0 * p;
-                        this.v[i * n + j + 1] += sy1 * p;
+                        this.u[i * n + j] += sx0 * p;
+                        this.u[i * n + j+1] -= sx1 * p;
+                        this.v[i * n + j] += sy0 * p;
+                        this.v[(i+1) * n + j] -= sy1 * p;
                     }
                 }
             }
@@ -200,15 +200,15 @@ public class FluidShower : MonoBehaviour
             // Extrapolate u values at top and bottom boundaries
             for (int i = 0; i < this.numX; i++)
             {
-                this.u[i * n + 0] = this.u[i * n + 1];
-                this.u[i * n + this.numY - 1] = this.u[i * n + this.numY - 2];
+                this.u[0 * n + i] = this.u[1 * n + i];
+                this.u[(this.numY - 1) * n + i] = this.u[(this.numY - 2) * n + i];
             }
 
             // Extrapolate v values at left and right boundaries
             for (int j = 0; j < this.numY; j++)
             {
-                this.v[0 * n + j] = this.v[1 * n + j];
-                this.v[(this.numX - 1) * n + j] = this.v[(this.numX - 2) * n + j];
+                this.v[j * n + 0] = this.v[j * n + 1];
+                this.v[j * n + (this.numX - 1)] = this.v[j * n + (this.numX - 2)];
             }
         }
 
@@ -256,10 +256,15 @@ public class FluidShower : MonoBehaviour
             float sx = 1.0f - tx;
             float sy = 1.0f - ty;
 
+            /*float val = sx * sy * f[y0 * n + x0] +
+                        tx * sy * f[y0 * n + x1] +
+                        tx * ty * f[y1 * n + x1] +
+                        sx * ty * f[y1 * n + x0];*/
+
             float val = sx * sy * f[x0 * n + y0] +
-                        tx * sy * f[x1 * n + y0] +
-                        tx * ty * f[x1 * n + y1] +
-                        sx * ty * f[x0 * n + y1];
+            tx * sy * f[x1 * n + y0] +
+            tx * ty * f[x1 * n + y1] +
+            sx * ty * f[x0 * n + y1];
 
             return val;
         }
@@ -267,16 +272,16 @@ public class FluidShower : MonoBehaviour
         public float AvgU(int i, int j)
         {
             int n = this.numY;
-            float u = (this.u[i * n + j - 1] + this.u[i * n + j] +
-                       this.u[(i + 1) * n + j - 1] + this.u[(i + 1) * n + j]) * 0.25f;
+            float u = (this.u[(i-1) * n + j] + this.u[i * n + j] +
+                       this.u[(i - 1) * n + j + 1] + this.u[i * n + j + 1]) * 0.25f;
             return u;
         }
 
         public float AvgV(int i, int j)
         {
             int n = this.numY;
-            float v = (this.v[(i - 1) * n + j] + this.v[i * n + j] +
-                       this.v[(i - 1) * n + j + 1] + this.v[i * n + j + 1]) * 0.25f;
+            float v = (this.v[i * n + j-1] + this.v[i * n + j] +
+                       this.v[(i + 1) * n + j - 1] + this.v[(i+1) * n + j]) * 0.25f;
             return v;
         }
 
@@ -295,7 +300,7 @@ public class FluidShower : MonoBehaviour
                 for (int j = 1; j < this.numY; j++)
                 {
                     // u component
-                    if (this.s[i * n + j] != 0.0f && this.s[(i - 1) * n + j] != 0.0f && j < this.numY - 1)
+                    if (this.s[i * n + j] != 0.0f && this.s[i * n + j-1] != 0.0f && j < this.numY - 1)
                     {
                         float x = i * h;
                         float y = j * h + h2;
@@ -307,7 +312,7 @@ public class FluidShower : MonoBehaviour
                         this.newU[i * n + j] = u;
                     }
                     // v component
-                    if (this.s[i * n + j] != 0.0f && this.s[i * n + j - 1] != 0.0f && i < this.numX - 1)
+                    if (this.s[i * n + j] != 0.0f && this.s[(i-1) * n + j] != 0.0f && i < this.numX - 1)
                     {
                         float x = i * h + h2;
                         float y = j * h;
@@ -341,8 +346,8 @@ public class FluidShower : MonoBehaviour
                 {
                     if (this.s[i * n + j] != 0.0f)
                     {
-                        float u = (this.u[i * n + j] + this.u[(i + 1) * n + j]) * 0.5f;
-                        float v = (this.v[i * n + j] + this.v[i * n + j + 1]) * 0.5f;
+                        float u = (this.u[i * n + j] + this.u[i * n + j+1]) * 0.5f;
+                        float v = (this.v[i * n + j] + this.v[(i+1) * n + j]) * 0.5f;
                         float x = i * h + h2 - dt * u;
                         float y = j * h + h2 - dt * v;
 

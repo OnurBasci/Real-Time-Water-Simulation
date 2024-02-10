@@ -391,7 +391,7 @@ MonoBehaviour:
   h: 1
   dt: 0.033333335
   numIter: 50
-  currentField: 3
+  currentField: 1
 --- !u!4 &1481742650
 Transform:
   m_ObjectHideFlags: 0
