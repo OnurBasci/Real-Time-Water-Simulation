@@ -15,7 +15,8 @@ public class fluidShowerV2 : MonoBehaviour
     public float squareSize = 1f; // Size of each square
 
     public float gravity = -9.81f;
-    public float density = 1000f;
+    public float density = 1f;
+    public float dt = 1 / 30f;
     public int numX = 100;
     public int numY = 100;
     public float h = 1;
@@ -58,7 +59,7 @@ public class fluidShowerV2 : MonoBehaviour
     {
         blockObjectsArray = new GameObject[numX, numY];
 
-        fluid = new Fluid(density, numX, numY, h, 0.01f, this);
+        fluid = new Fluid(density, numX, numY, h, dt, this);
         GenerateGrid(fluid);
         putRedArrowsOnGrid(fluid);
         //fluid.setUp();
@@ -85,7 +86,7 @@ public class fluidShowerV2 : MonoBehaviour
     {
         //get the delta time
         //deltaTime += (Time.deltaTime - deltaTime) * 0.1f;
-        fluid.dt = (Time.deltaTime - deltaTime) * 0.1f;
+        //fluid.dt = (Time.deltaTime - deltaTime) * 0.1f;
 
         fluid.Simulate(gravity);
         
@@ -181,15 +182,15 @@ public class fluidShowerV2 : MonoBehaviour
             {
                 if (fluid.types[j*numY + i] == SOLID)
                 {
-                    blockObjectsArray[j, i].GetComponent<SpriteRenderer>().color = Color.black;
+                    blockObjectsArray[j, i].GetComponentInChildren<SpriteRenderer>().color = Color.black;
                 }
                 else if(fluid.types[j * numY + i] == FLUID)
                 {
-                    blockObjectsArray[j, i].GetComponent<SpriteRenderer>().color = Color.blue;
+                    blockObjectsArray[j, i].GetComponentInChildren<SpriteRenderer>().color = Color.blue;
                 }
                 else if(fluid.types[j * numY + i] == EMPTY)
                 {
-                    blockObjectsArray[j, i].GetComponent<SpriteRenderer>().color = Color.white;
+                    blockObjectsArray[j, i].GetComponentInChildren<SpriteRenderer>().color = Color.white;
                 }
             }
         }
@@ -239,7 +240,7 @@ public class fluidShowerV2 : MonoBehaviour
         float minVel = FindMin(fluid.u);
 
         
-        for (int i = 0; i < numX; i++)
+        for (int i = 0; i < numX + 1; i++)
         {
             for (int j = 0; j < numY; j++)
             {
@@ -263,7 +264,7 @@ public class fluidShowerV2 : MonoBehaviour
         minVel = FindMin(fluid.v);
         for (int i = 0; i < numX; i++)
         {
-            for (int j = 0; j < numY; j++)
+            for (int j = 0; j < numY + 1; j++)
             {
                 if (fluid.v[i * numY + j] > 0)
                 {
@@ -337,8 +338,8 @@ public class fluidShowerV2 : MonoBehaviour
             this.numY = numY;
             this.numCells = this.numX * this.numY;
             this.h = h;
-            this.u = new double[this.numCells];
-            this.v = new double[this.numCells];
+            this.u = new double[(numX + 1) * numY];
+            this.v = new double[numX * (numY + 1)];
             this.newU = new double[this.numCells];
             this.newV = new double[this.numCells];
             this.p = new double[this.numCells];
@@ -374,9 +375,9 @@ public class fluidShowerV2 : MonoBehaviour
 
             //initialize particles
             this.particles = new List<Vector2>();
-            for (int i = 0; i < numX; i++)
+            for (int i = 1; i < numX; i++)
             {
-                for (int j = 0; j < numY; j++)
+                for (int j = 1; j < numY; j++)
                 {
                     if (types[i * numY + j] == FLUID)
                     {
@@ -385,7 +386,7 @@ public class fluidShowerV2 : MonoBehaviour
                         Vector2 randomOffset3 = new Vector2(UnityEngine.Random.Range(-0.25f, 0.25f), UnityEngine.Random.Range(-0.25f, 0.25f));
                         Vector2 randomOffset4 = new Vector2(UnityEngine.Random.Range(-0.25f, 0.25f), UnityEngine.Random.Range(-0.25f, 0.25f));
                         particles.Add(new Vector2(i - 0.25f, j - 0.25f) + randomOffset1);
-                        particles.Add(new Vector2(i - 0.25f, j - 0.75f) + randomOffset2);
+                        particles.Add(new Vector2(i - 0.25f, j - 0.25f) + randomOffset2);
                         particles.Add(new Vector2(i + 0.25f, j + 0.25f) + randomOffset3);
                         particles.Add(new Vector2(i + 0.25f, j + 0.25f) + randomOffset4);
                     }
@@ -559,7 +560,7 @@ public class fluidShowerV2 : MonoBehaviour
 
             for (int i = 0; i < numX; i++)
             {
-                for (int j = 0; j < numX - 1; j++)
+                for (int j = 0; j < numY - 1; j++)
                 {
                     if (types[i * numY + j] != FLUID && types[i * numY + j + 1] != FLUID)
                         continue;
@@ -596,20 +597,176 @@ public class fluidShowerV2 : MonoBehaviour
 
         private void Extrapolate()
         {
-            int n = this.numY;
+            //we use fast sweep method to calculate the level set function
+            // Define maximum integer value for marking unreachable cells
+            int maxint = numX * numY;
 
-            // Extrapolate u values at top and bottom boundaries
-            for (int i = 0; i < this.numX; i++)
+            // initialize the distance array with maximum distance
+            int[] d = new int[(numX + 1) * numY];
+            for (int i = 0; i < numX + 1; i++)
             {
-                this.u[i * n + 0] = this.u[i * n + 1];
-                this.u[i * n + this.numY - 1] = this.u[i * n + this.numY - 2];
+                for (int j = 0; j < numY; j++)
+                {
+                    d[i * numY + j] = maxint;
+                }
             }
 
-            // Extrapolate v values at left and right boundaries
-            for (int j = 0; j < this.numY; j++)
+            // List of blocks that we know the
+            List<Tuple<int, int>> W = new List<Tuple<int, int>>();
+
+            //put the distance of the inside fluids to 0
+            for (int i = 0; i < numX - 1; i++)
             {
-                this.v[0 * n + j] = this.v[1 * n + j];
-                this.v[(this.numX - 1) * n + j] = this.v[(this.numX - 2) * n + j];
+                for (int j = 0; j < numY; j++)
+                {
+                    if (types[i * numY + j] == FLUID || types[(i + 1) * numY + j] == FLUID)
+                    {
+                        d[(i + 1) * numY + j] = 0;
+                    }
+                }
+            }
+
+            // put the distance of the blocks next to the fluid surface to 1
+            for (int i = 0; i < numX + 1; i++)
+            {
+                for (int j = 0; j < numY; j++)
+                {
+                    if (d[i * numY + j] == 0)
+                    {
+                        continue;
+                    }
+
+                    foreach (var (i2, j2) in new[] { (i - 1, j), (i, j - 1), (i + 1, j), (i, j + 1) })
+                    {
+                        if (i2 >= 0 && i2 < numX + 1 && j2 >= 0 && j2 < numY)
+                        {
+                            if (d[i2 * numY + j2] == 0)
+                            {
+                                d[i * numY + j] = 1;
+                                W.Add(Tuple.Create(i, j));
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // apply the fast sweep method
+            int t = 0;
+            while (t < W.Count)
+            {
+                var (i, j) = W[t];
+                double newU = 0;
+                int count = 0;
+                foreach (var (i2, j2) in new[] { (i - 1, j), (i, j - 1), (i + 1, j), (i, j + 1) })
+                {
+                    if (i2 >= 0 && i2 < numX + 1 && j2 >= 0 && j2 < numY)
+                    {
+                        //check if the cell is closer to boundary
+                        if (d[i2 * numY + j2] < d[i * numY + j])
+                        {
+                            newU += u[i2 * numY + j2];
+                            count++;
+                        }
+                    }
+                }
+                u[i * numY + j] = (float)newU / count;
+
+                foreach (var (i2, j2) in new[] { (i - 1, j), (i, j - 1), (i + 1, j), (i, j + 1) })
+                {
+                    if (i2 >= 0 && i2 < numX + 1 && j2 >= 0 && j2 < numY)
+                    {
+                        if (d[i2 * numY + j2] == maxint)
+                        {
+                            d[i2 * numY + j2] = d[i * numY + j] + 1;
+                            W.Add(Tuple.Create(i2, j2));
+                        }
+                    }
+                }
+                t++;
+            }
+
+            //same approach for the verticle field
+            // Clear distance array for the next pass
+            d = new int[numX * (numY + 1)];
+            for (int i = 0; i < numX; i++)
+            {
+                for (int j = 0; j < numY + 1; j++)
+                {
+                    d[i * numY + j] = maxint;
+                }
+            }
+            W.Clear();
+
+            // Second pass for v
+            for (int i = 0; i < numX; i++)
+            {
+                for (int j = 0; j < numY - 1; j++)
+                {
+                    if (types[i * numY + j] == FLUID || types[i * numY + j + 1] == FLUID)
+                    {
+                        d[i * numY + j + 1] = 0;
+                    }
+                }
+            }
+
+            // put the distance of the blocks next to the fluid surface to 1
+            for (int i = 0; i < numX; i++)
+            {
+                for (int j = 0; j < numY + 1; j++)
+                {
+                    if (d[i * numY + j] == 0)
+                    {
+                        continue;
+                    }
+
+                    foreach (var (i2, j2) in new[] { (i - 1, j), (i, j - 1), (i + 1, j), (i, j + 1) })
+                    {
+                        if (i2 >= 0 && i2 < numX && j2 >= 0 && j2 < numY + 1)
+                        {
+                            if (d[i2 * numY + j2] == 0)
+                            {
+                                d[i * numY + j] = 1;
+                                W.Add(Tuple.Create(i, j));
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // apply the fast sweep method for v
+            t = 0;
+            while (t < W.Count)
+            {
+                var (i, j) = W[t];
+                double newV = 0;
+                int count = 0;
+                foreach (var (i2, j2) in new[] { (i - 1, j), (i, j - 1), (i + 1, j), (i, j + 1) })
+                {
+                    if (i2 >= 0 && i2 < numX && j2 >= 0 && j2 < numY + 1)
+                    {
+                        if (d[i2 * numY + j2] < d[i * numY + j])
+                        {
+                            newV += v[i2 * numY + j2];
+                            count++;
+                        }
+                    }
+                }
+                v[i * numY + j] = (float)newV / count;
+
+                foreach (var (i2, j2) in new[] { (i - 1, j), (i, j - 1), (i + 1, j), (i, j + 1) })
+                {
+                    if (i2 >= 0 && i2 < numX && j2 >= 0 && j2 < numY + 1)
+                    {
+                        if (d[i2 * numY + j2] == maxint)
+                        {
+                            d[i2 * numY + j2] = d[i * numY + j] + 1;
+                            W.Add(Tuple.Create(i2, j2));
+                        }
+                    }
+                }
+                t++;
             }
         }
 
@@ -692,7 +849,7 @@ public class fluidShowerV2 : MonoBehaviour
             float h = this.h;
             float h2 = 0.5f * h;
 
-            for (int i = 1; i < this.numX; i++)
+            for (int i = 1; i < numX; i++)
             {
                 for (int j = 1; j < this.numY; j++)
                 {
@@ -777,7 +934,7 @@ public class fluidShowerV2 : MonoBehaviour
             {
                 Vector2 newParticlePosition = RK2(particles[idx]);
                 float newX = newParticlePosition.x;
-                float newY = newParticlePosition.y;
+                float newY = newParticlePosition.y ; 
 
                 // Check if the new position is not SOLID, then update particles and types array
                 if (types[(int)newX * numY + (int)newY] != SOLID)
@@ -786,7 +943,6 @@ public class fluidShowerV2 : MonoBehaviour
                     particles[idx] = newParticlePosition;
                     types[(int)newX * numY + (int)newY] = FLUID;
 
-                    //Debug.Log("after at " + (newX, newY) + " " + types[newX, newY]);
                 }
             }
 
