@@ -611,6 +611,43 @@ public class fluidShowerV2 : MonoBehaviour
             Array.Copy(this.newM, this.m, this.m.Length);
         }
 
+        void MoveParticles()
+        {
+            // Clear the types array where it's not SOLID
+            for (int i = 0; i < numX; i++)
+            {
+                for (int j = 0; j < numY; j++)
+                {
+                    if (types[i * numY + j] != SOLID)
+                    {
+                        types[i * numY + j] = EMPTY;
+                    }
+                }
+            }
+
+            // Move particles using RK2 method
+            for (int idx = 0; idx < particles.Count; idx++)
+            {
+                Vector2 newParticlePosition = RK2(particles[idx]);
+                float newX = newParticlePosition.x;
+                float newY = newParticlePosition.y;
+
+                // Check if the new position is not SOLID, then update particles and types array
+                if (types[(int)newX * numY + (int)newY] != SOLID)
+                {
+                    //Debug.Log("before at " + (newX, newY) + " " + types[newX, newY]);
+                    particles[idx] = newParticlePosition;
+                    types[(int)newX * numY + (int)newY] = FLUID;
+
+                    //Debug.Log("after at " + (newX, newY) + " " + types[newX, newY]);
+                }
+            }
+
+            for (int idx = 0; idx < particles.Count; idx++)
+            {
+                fluidShower.particleObjects[idx].transform.position = particles[idx];
+            }
+        }
 
         float BilinearInterpU(Vector2 p)
         {
@@ -732,7 +769,6 @@ public class fluidShowerV2 : MonoBehaviour
 
         public void Simulate(float gravity)
         {
-            Debug.Log(dt);
             if (fluidShower.activateHorizontalFore)
             {
                 addHorizontalForce();
@@ -741,12 +777,13 @@ public class fluidShowerV2 : MonoBehaviour
             //Array.Clear(p, 0, p.Length);
 
             AdvectVel();
-            AdvectSmoke();
-
-            Integrate(gravity);
-
+            //AdvectSmoke();
             SolveIncompressibility();
             Extrapolate();
+
+            MoveParticles();
+
+            Integrate(gravity);
 
 
         }
