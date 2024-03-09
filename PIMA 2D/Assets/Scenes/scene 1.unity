@@ -234,7 +234,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 519420028}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 26.5, y: 10.65, z: -10}
+  m_LocalPosition: {x: 26.5, y: 22.4, z: -10}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -386,8 +386,8 @@ MonoBehaviour:
   gravity: -9.81
   overRelaxation: 1.9
   density: 1000
-  numX: 40
-  numY: 20
+  numX: 100
+  numY: 50
   h: 1
   dt: 0.016666668
   numIter: 40
@@ -438,19 +438,19 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6688436335547806279, guid: f77348360f7b3fe48800bc33395562f6, type: 3}
       propertyPath: m_LocalScale.x
-      value: 3.8196
+      value: 9.221279
       objectReference: {fileID: 0}
     - target: {fileID: 6688436335547806279, guid: f77348360f7b3fe48800bc33395562f6, type: 3}
       propertyPath: m_LocalScale.y
-      value: 3.8196
+      value: 9.221279
       objectReference: {fileID: 0}
     - target: {fileID: 6688436335547806279, guid: f77348360f7b3fe48800bc33395562f6, type: 3}
       propertyPath: m_LocalScale.z
-      value: 3.8196
+      value: 9.221279
       objectReference: {fileID: 0}
     - target: {fileID: 6688436335547806279, guid: f77348360f7b3fe48800bc33395562f6, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 3.13
+      value: 4.5
       objectReference: {fileID: 0}
     - target: {fileID: 6688436335547806279, guid: f77348360f7b3fe48800bc33395562f6, type: 3}
       propertyPath: m_LocalPosition.y
@@ -568,6 +568,10 @@ PrefabInstance:
     - target: {fileID: 7528791043427278679, guid: 3f6bf1e7430a81545b92dc68fb0144ca, type: 3}
       propertyPath: m_Name
       value: obstacle 2
+      objectReference: {fileID: 0}
+    - target: {fileID: 7528791043427278679, guid: 3f6bf1e7430a81545b92dc68fb0144ca, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 3f6bf1e7430a81545b92dc68fb0144ca, type: 3}

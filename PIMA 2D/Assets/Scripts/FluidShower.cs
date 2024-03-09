@@ -1,12 +1,8 @@
 using System;
-using System.Collections;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using Unity.Mathematics;
-using UnityEditor.ShaderGraph.Internal;
 using UnityEngine;
-using static UnityEngine.Rendering.DebugUI;
 
 public class FluidShower : MonoBehaviour
 {
@@ -23,6 +19,7 @@ public class FluidShower : MonoBehaviour
     public int numIter = 100;
     public FieldType currentField;
     public bool activateHorizontalFore = false;
+    public bool addCircleToMiddle = false;
     public float horizontalForce = 40;
     public enum FieldType
     {
@@ -49,6 +46,11 @@ public class FluidShower : MonoBehaviour
         fluid = new Fluid(density, numX, numY, h, this);
         GenerateGrid(fluid);
         //fluid.setUp();
+
+        if (addCircleToMiddle)
+        {
+            fluid.addCircleFluidToMiddle();
+        }
     }
 
     public void Update()
@@ -162,9 +164,6 @@ public class FluidShower : MonoBehaviour
                         s[i*numY + j] = 0.0f;	// make the border solid
                 }
             }
-
-            m[5 * numY + 10] = 1;
-
         }
         private void Integrate(float dt, float gravity)
         {
@@ -392,6 +391,23 @@ public class FluidShower : MonoBehaviour
                     continue;
                 m[2 * numY+i] = 1;
                 u[2 * numY + i] = fluidShower.horizontalForce;
+            }
+        }
+
+        public void addCircleFluidToMiddle()
+        {
+            Vector2 Center = new Vector2((int)(numX / 2), (int)(numY / 2));
+            float radius = 10f;
+
+            for (int i = 0; i < numX; i++)
+            {
+                for (int j = 0; j < numY; j++)
+                {
+                    if ((math.pow(i - Center.x, 2) + math.pow(j - Center.y, 2)) < radius)
+                    {
+                        m[i * numY + j] = 1;
+                    }
+                }
             }
         }
 
