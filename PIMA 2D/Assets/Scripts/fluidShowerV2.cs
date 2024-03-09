@@ -5,10 +5,13 @@ using Unity.Mathematics;
 using UnityEngine;
 using MathNet.Numerics.LinearAlgebra;
 using MathNet.Numerics.LinearAlgebra.Double;
+using static UnityEngine.ParticleSystem;
 
 public class fluidShowerV2 : MonoBehaviour
 {
     public GameObject squarePrefab; // Prefab for the grid square
+    public GameObject particleObject;
+    public GameObject redArrow;
     public float squareSize = 1f; // Size of each square
 
     public float gravity = -9.81f;
@@ -22,6 +25,7 @@ public class fluidShowerV2 : MonoBehaviour
     public float horizontalForce = 40;
     public bool printVolume = false;
     public bool printGrid = false;
+    public bool simulateWater = true;
 
     private float deltaTime;
 
@@ -42,15 +46,21 @@ public class fluidShowerV2 : MonoBehaviour
     public const int SFIELD = 2; //smoke field
 
     private GameObject[,] blockObjectsArray;
+    private List<GameObject> particleObjects = new List<GameObject>();
+    private List<GameObject> horizontalRedArrows = new List<GameObject>();
+    private List<GameObject> verticalRedArrows = new List<GameObject>();
 
     [NonSerialized] public Fluid fluid;
+
+    const int SOLID = 0, FLUID = 1, EMPTY = 2;
 
     public void Start()
     {
         blockObjectsArray = new GameObject[numX, numY];
 
-        fluid = new Fluid(density, numX, numY, h, this);
+        fluid = new Fluid(density, numX, numY, h, 0.01f, this);
         GenerateGrid(fluid);
+        putRedArrowsOnGrid(fluid);
         //fluid.setUp();
 
         if(addCircleToMiddle)
@@ -74,10 +84,20 @@ public class fluidShowerV2 : MonoBehaviour
     public void Update()
     {
         //get the delta time
-        deltaTime += (Time.deltaTime - deltaTime) * 0.1f;
+        //deltaTime += (Time.deltaTime - deltaTime) * 0.1f;
+        fluid.dt = (Time.deltaTime - deltaTime) * 0.1f;
 
-        fluid.Simulate(deltaTime, gravity);
-        simulateGrid(fluid);
+        fluid.Simulate(gravity);
+        
+        if(simulateWater)
+        {
+            showWater(fluid);
+            updateArrows(fluid);
+        }
+        else
+        {
+            simulateGrid(fluid);
+        }
 
         if(printVolume)
         {
@@ -90,6 +110,7 @@ public class fluidShowerV2 : MonoBehaviour
         }
     }
 
+    #region FUNCTION TO PLOT THE GRID
 
     void GenerateGrid(Fluid fluid)
     {
@@ -150,11 +171,149 @@ public class fluidShowerV2 : MonoBehaviour
         }
     }
 
+    public void showWater(Fluid fluid)
+    {
+        //this method changes the color of a block by it's type (black for solid, white for air and blue for water)
+
+        for(int i = 0; i < numY; i ++)
+        {
+            for(int j = 0; j < numX; j++)
+            {
+                if (fluid.types[j*numY + i] == SOLID)
+                {
+                    blockObjectsArray[j, i].GetComponent<SpriteRenderer>().color = Color.black;
+                }
+                else if(fluid.types[j * numY + i] == FLUID)
+                {
+                    blockObjectsArray[j, i].GetComponent<SpriteRenderer>().color = Color.blue;
+                }
+                else if(fluid.types[j * numY + i] == EMPTY)
+                {
+                    blockObjectsArray[j, i].GetComponent<SpriteRenderer>().color = Color.white;
+                }
+            }
+        }
+    }
+
+    void putRedArrowsOnGrid(Fluid fluid)
+    {
+        float h2 = (float)(blockObjectsArray[1, 0].transform.position.x - blockObjectsArray[0, 0].transform.position.x) / (float)2;
+
+        //add horizontal arrows representing horizontal vector field
+        for (int i = 0; i < numX + 1; i++)
+        {
+            for (int j = 0; j < numY; j++)
+            {
+                if (i == 0)
+                {
+                    horizontalRedArrows.Add(Instantiate(redArrow, new Vector2(blockObjectsArray[0, j].transform.position.x - h2,
+                    blockObjectsArray[0, j].transform.position.y), Quaternion.identity));
+                    continue;
+                }
+                horizontalRedArrows.Add(Instantiate(redArrow, new Vector2(blockObjectsArray[i - 1, j].transform.position.x + h2,
+                    blockObjectsArray[i - 1, j].transform.position.y), Quaternion.identity));
+            }
+        }
+        //add vertical arrows representing horizontal vector field
+        for (int i = 0; i < numX; i++)
+        {
+            for (int j = 0; j < numY + 1; j++)
+            {
+                if (j == 0)
+                {
+                    verticalRedArrows.Add(Instantiate(redArrow, new Vector2(blockObjectsArray[i, 0].transform.position.x,
+                    blockObjectsArray[j, 0].transform.position.y - h2), Quaternion.Euler(0, 0, 90)));
+                    continue;
+                }
+                verticalRedArrows.Add(Instantiate(redArrow, new Vector2(blockObjectsArray[i, j - 1].transform.position.x,
+                    blockObjectsArray[i, j - 1].transform.position.y + h2), Quaternion.Euler(0, 0, 90)));
+            }
+        }
+    }
+
+    public void updateArrows(Fluid fluid)
+    {
+        //update the horizontal velocity field
+        float arrowLength = 0;
+        float maxVel = FindMax(fluid.u);
+        float minVel = FindMin(fluid.u);
+
+        
+        for (int i = 0; i < numX; i++)
+        {
+            for (int j = 0; j < numY; j++)
+            {
+                if (fluid.u[i * numY + j] > 0)
+                {
+                    if (maxVel == 0) continue;
+                    arrowLength = (float)fluid.u[i * numY + j] / maxVel;
+                    horizontalRedArrows[i * numY + j].transform.localScale = new Vector3(arrowLength, 1, 1);
+                }
+                else if (fluid.u[i * numY + j] < 0)
+                {
+                    if (minVel == 0) continue;
+                    arrowLength = (float)fluid.u[i * numY + j] / minVel;
+                    horizontalRedArrows[i * numY + j].transform.localScale = new Vector3(-arrowLength, 1, 1);
+                }
+            }
+        }
+
+        //update the vertical field
+        maxVel = FindMax(fluid.v);
+        minVel = FindMin(fluid.v);
+        for (int i = 0; i < numX; i++)
+        {
+            for (int j = 0; j < numY; j++)
+            {
+                if (fluid.v[i * numY + j] > 0)
+                {
+                    if (maxVel == 0) continue;
+                    arrowLength = (float)fluid.v[i*numY + j] / maxVel;
+                    verticalRedArrows[i *numY + j].transform.localScale = new Vector3(arrowLength, 1, 1);
+                }
+                else if (fluid.v[i * numY + j] < 0)
+                {
+                    if (minVel == 0) continue;
+                    arrowLength = (float)fluid.v[i * numY + j] / minVel;
+                    verticalRedArrows[i * numY + j].transform.localScale = new Vector3(-arrowLength, 1, 1);
+                }
+            }
+        }
+    }
+
+    #endregion
+
+    #region USEFULL FUNCTION
+
+    public static int FindMax(double[] array)
+    {
+        int max = int.MinValue;
+        foreach (int element in array)
+        {
+            if (element > max)
+                max = element;
+        }
+        return max;
+    }
+
+    public static int FindMin(double[] array)
+    {
+        int min = int.MaxValue;
+        foreach (int element in array)
+        {
+            if (element < min)
+                min = element;
+        }
+        return min;
+    }
+
+    #endregion
 
     public class Fluid
     {
         public fluidShowerV2 fluidShower;
         public float density;
+        public float dt;
         public int numX;
         public int numY;
         public int numCells;
@@ -164,13 +323,16 @@ public class fluidShowerV2 : MonoBehaviour
         public double[] newU;
         public double[] newV;
         public double[] p;
-        public int[] s;
+        public int[] types; //takes 0 for solid 1 for fluid and 2 for air
         public double[] m;  // m for density (mase)
         public double[] newM;
 
-        public Fluid(float density, int numX, int numY, float h, fluidShowerV2 fluidShower)
+        List<Vector2> particles;
+
+        public Fluid(float density, int numX, int numY, float h, float dt, fluidShowerV2 fluidShower)
         {
             this.density = density;
+            this.dt = dt;
             this.numX = numX;
             this.numY = numY;
             this.numCells = this.numX * this.numY;
@@ -180,34 +342,72 @@ public class fluidShowerV2 : MonoBehaviour
             this.newU = new double[this.numCells];
             this.newV = new double[this.numCells];
             this.p = new double[this.numCells];
-            this.s = new int[this.numCells];
+            this.types = new int[this.numCells];
             this.m = new double[this.numCells];
             this.newM = new double[this.numCells];
             this.fluidShower = fluidShower;
 
-            // Initialize m and s array with 1.0
+            // Initialize types
             for (int i = 0; i < numX; i++)
             {
                 for (int j = 0; j < numY; j++)
                 {
-                    //this.m[i] = 1.0f;
-                    this.s[i * numY + j] = 1;
-                    if (i == 0 || i == numX - 1 || j == 0 || j == numY - 1)
-                        s[i * numY + j] = 0;	// make the border solid
+                    types[i * numY + j] = EMPTY;
                 }
             }
 
-            //m[5 * numY + 10] = 1;
+            for (int i = 0; i < numX; i++)
+            {
+                types[0 * numY + i] = SOLID;
+                types[i * numY + 0] = SOLID;
+                types[(numX - 1) *numY + i] = SOLID;
+                types[i * numY + (numY - 1)] = SOLID;
+            }
+
+            for (int j = 1; j < numY - 1; j++)
+            {
+                for (int i = 1; i < numX / 2; i++)
+                {
+                    types[i* numY + j] = FLUID;
+                }
+            }
+
+            //initialize particles
+            this.particles = new List<Vector2>();
+            for (int i = 0; i < numX; i++)
+            {
+                for (int j = 0; j < numY; j++)
+                {
+                    if (types[i * numY + j] == FLUID)
+                    {
+                        Vector2 randomOffset1 = new Vector2(UnityEngine.Random.Range(-0.25f, 0.25f), UnityEngine.Random.Range(-0.25f, 0.25f));
+                        Vector2 randomOffset2 = new Vector2(UnityEngine.Random.Range(-0.25f, 0.25f), UnityEngine.Random.Range(-0.25f, 0.25f));
+                        Vector2 randomOffset3 = new Vector2(UnityEngine.Random.Range(-0.25f, 0.25f), UnityEngine.Random.Range(-0.25f, 0.25f));
+                        Vector2 randomOffset4 = new Vector2(UnityEngine.Random.Range(-0.25f, 0.25f), UnityEngine.Random.Range(-0.25f, 0.25f));
+                        particles.Add(new Vector2(i - 0.25f, j - 0.25f) + randomOffset1);
+                        particles.Add(new Vector2(i - 0.25f, j - 0.75f) + randomOffset2);
+                        particles.Add(new Vector2(i + 0.25f, j + 0.25f) + randomOffset3);
+                        particles.Add(new Vector2(i + 0.25f, j + 0.25f) + randomOffset4);
+                    }
+                }
+            }
+
+            foreach (var particle in particles)
+            {
+                var pObject = Instantiate(fluidShower.particleObject, particle, Quaternion.identity);
+                fluidShower.particleObjects.Add(pObject);
+            }
 
         }
-        private void Integrate(float dt, float gravity)
+
+        private void Integrate(float gravity)
         {
             int n = this.numY;
             for (int i = 1; i < this.numX; i++)
             {
                 for (int j = 1; j < this.numY - 1; j++)
                 {
-                    if (this.s[i * n + j] != 0.0f && this.s[i * n + j - 1] != 0.0f)
+                    if (this.types[i * n + j] != 0.0f && this.types[i * n + j - 1] != 0.0f)
                     {
                         this.v[i * n + j] += gravity * dt;
                     }
@@ -215,7 +415,7 @@ public class fluidShowerV2 : MonoBehaviour
             }
         }
 
-        private void SolveIncompressibility(float dt)
+        private void SolveIncompressibility()
         {
             DenseMatrix u = DenseMatrix.Create(numX, numY, 0);
             DenseMatrix v = DenseMatrix.Create(numX, numY, 0);
@@ -245,220 +445,7 @@ public class fluidShowerV2 : MonoBehaviour
             }
         }
 
-        private void updatePressureField(float dt)
-        {
-            //In this method we solve the linear equation Ap = d for p where A is the pressure coefficients, p is the pressure
-            //values and d is the divergence of a block
 
-            //calculate A and d
-            //var A = new DenseMatrix(numX*numY, numX*numY);
-
-            var A = Matrix<double>.Build.DenseOfArray(fluidShower.bufferZeroArray);
-            Vector<double> divergences = Vector<double>.Build.Dense(numX*numY);
-
-            //we fill the diagonal coefficient with the number of neighboors
-            var n = numY;
-            for (int i = 1; i < numX - 1;  i ++)
-            {
-                for(int j = 1; j < numY - 1; j ++)
-                {
-                    double sx0 = this.s[(i - 1) * n + j];
-                    double sx1 = this.s[(i + 1) * n + j];
-                    double sy0 = this.s[i * n + j - 1];
-                    double sy1 = this.s[i * n + j + 1];
-                    double nbNeighboors = sx0 + sx1 + sy0 + sy1;
-
-                    //we fill the diagonal coefficient with the number of neighboors
-                    A[i * numY + j, i * numY + j] = nbNeighboors;
-
-                    //others are filled with -1: pi+1,j, pi,j+1, pi-1,j , pi,j-1
-                    A[i * numY + j, (i + 1) * numY + j] = -1;
-                    A[i * numY + j, i * numY + j + 1] = -1;
-                    A[i * numY + j, (i-1) * numY + j] = -1;
-                    A[i * numY + j, i * numY + j - 1] = -1;
-
-                    double div = (u[(i + 1) * n + j] - u[i * n + j] + v[i * n + j + 1] - v[i * n + j])/h;
-
-                    divergences[i * numY + j] = div;
-                }
-            }
-
-            double divCosntant = density * math.pow(h, 2) / dt;
-            divergences *= divCosntant;
-
-            Debug.Log("Before solving");
-
-            Vector<double> pressureVector = A.Solve(divergences);
-
-            Debug.Log("After solving");
-
-            //update the pressure field
-            //p = pressureVector.ToColumnMatrix().ToArray2D();
-
-            for (int i = 0; i < numX; i++)
-            {
-                for(int j = 0; j < numY; j++)
-                {
-                    p[i* numY + j] = (float) pressureVector[i * numY + j]; 
-                }
-            }
-        }
-
-        private void updatePressureFieldV2(float dt)
-        {
-            List<Tuple<int, int>> fluidCells = new List<Tuple<int, int>>();
-            Dictionary<Tuple<int, int>, int> fluidDict = new Dictionary<Tuple<int, int>, int>();
-
-            for (int i = 0; i < numX; i++)
-            {
-                for (int j = 0; j < numY; j++)
-                { 
-                    if (s[i * numY + j] == 1)
-                    {
-                        fluidCells.Add(Tuple.Create(i, j));
-                        fluidDict[Tuple.Create(i, j)] = fluidCells.Count - 1;
-                    }
-                }
-            }
-
-            int nFluid = fluidCells.Count;
-            var A = Matrix<double>.Build.Dense(nFluid, nFluid);
-            var b = Vector<double>.Build.Dense(nFluid);
-
-            for (int idx = 0; idx < nFluid; idx++)
-            {
-                //Calculate the pressure coefficients
-                int i = fluidCells[idx].Item1;
-                int j = fluidCells[idx].Item2;
-
-                if (i == 0 || i == numX - 1 || j == 0 || j == numY - 1)
-                    continue;
-
-                if (s[(i - 1)*numY + j] == 1)
-                    A[idx, fluidDict[Tuple.Create(i - 1, j)]] = -1;
-                if (s[i * numY + j - 1] == 1)
-                    A[idx, fluidDict[Tuple.Create(i, j - 1)]] = -1;
-                if (s[(i + 1) * numY + j] == 1)
-                    A[idx, fluidDict[Tuple.Create(i + 1, j)]] = -1;
-                if (s[i * numY + j + 1] == 1)
-                    A[idx, fluidDict[Tuple.Create(i, j + 1)]] = -1;
-
-                //calculate the diagonal coefficient
-                int nonSolid = 0;
-                double D = 0;
-
-                if (s[(i - 1) * numY + j] != 0)
-                {
-                    D -= u[i * numY + j];
-                    nonSolid++;
-                }
-                if (s[i * numY + j - 1] != 0)
-                {
-                    D -= v[i * numY + j];
-                    nonSolid++;
-                }
-                if (s[(i + 1) * numY + j] != 0)
-                {
-                    D += u[(i + 1) * numY + j];
-                    nonSolid++;
-                }
-                if (s[i * numY + j + 1] != 0)
-                {
-                    D += v[i * numY + j + 1];
-                    nonSolid++;
-                }
-
-                A[idx, idx] = nonSolid;
-                b[idx] = -(1 / dt) * D;
-            }
-
-            // Solve linear system
-            var x = A.Solve(b);
-
-            Debug.Log(string.Join(", ", x));
-
-            // Convert x to 2D array
-            foreach (var cell in fluidCells)
-            {
-                int i = cell.Item1;
-                int j = cell.Item2;
-                p[i*numY+j] = x[fluidDict[Tuple.Create(i, j)]];
-            }
-
-            // Update u2
-            double[] u2 = new double[numCells];
-            for (int i = 0; i < numX - 1; i++)
-            {
-                for (int j = 0; j < numY; j++)
-                {
-                    if (s[i*numX+ j] != 1 && s[(i + 1) * numY + j] != 1)
-                        continue;
-
-                    double rightP = 0, leftP = 0;
-
-                    if (s[(i + 1) * numY + j] == 1)
-                        rightP = x[fluidDict[Tuple.Create(i + 1, j)]];
-                    if (s[(i + 1) * numY + j] == 2) //If it is empty to add
-                        rightP = 0;
-                    if (s[(i + 1) * numY + j] == 0)
-                    {
-                        u2[(i + 1) * numY + j] = 0;
-                        continue;
-                    }
-
-                    if (s[(i * numY) + j] == 1)
-                        leftP = x[fluidDict[Tuple.Create(i, j)]];
-                    if (s[(i * numY) + j] == 2) //TO ADD
-                        leftP = 0;
-                    if (s[i * numY + j] == 0)
-                    {
-                        u2[(i + 1) * numY + j] = 0;
-                        continue;
-                    }
-
-                    u2[(i + 1) * numY + j] -= dt * (rightP - leftP);
-                }
-            }
-
-            // Update v2
-            double[] v2 = new double[numCells];
-            for (int i = 0; i < numX; i++)
-            {
-                for (int j = 0; j < numY - 1; j++)
-                {
-                    if (s[i* numY + j] != 1 && s[i*numY +j + 1] != 1)
-                        continue;
-
-                    double topP = 0, bottomP = 0;
-
-                    if (s[i * numY + j + 1] == 1)
-                        topP = x[fluidDict[Tuple.Create(i, j + 1)]];
-                    if (s[i * numY + j + 1] == 2) //TO ADD
-                        topP = 0;
-                    if (s[i * numY + j + 1] == 0)
-                    {
-                        v2[i * numY + j + 1] = 0;
-                        continue;
-                    }
-
-                    if (s[i * numY + j] == 1)
-                        bottomP = x[fluidDict[Tuple.Create(i, j)]];
-                    if (s[i * numY + j] == 2)
-                        bottomP = 0;
-                    if (s[i * numY + j] == 0)
-                    {
-                        v2[i * numY + j + 1] = 0;
-                        continue;
-                    }
-
-                    v2[i * numY + j + 1] -= dt * (topP - bottomP);
-                }
-            }
-
-            // Update u and v
-            u = u2;
-            v = v2;
-        }
 
         private void Extrapolate()
         {
@@ -479,166 +466,6 @@ public class fluidShowerV2 : MonoBehaviour
             }
         }
 
-        private void Extrapolate2()
-        {
-            int N = numX;
-
-            // Define maximum integer value for marking unreachable cells
-            int maxint = N * N;
-
-            // Array to store distances to nearest FLUID cells
-            int[,] d = new int[N + 1, N];
-
-            // List to store cells to be processed
-            List<Tuple<int, int>> W = new List<Tuple<int, int>>();
-
-            // First pass for u
-            for (int i = 0; i < N - 1; i++)
-            {
-                for (int j = 0; j < N; j++)
-                {
-                    if (s[i*numY + j] == 1 || s[i*numY + j] == 1)
-                    {
-                        d[i + 1, j] = 0;
-                    }
-                }
-            }
-
-            // Initialize W list with cells having a FLUID neighbor
-            for (int i = 0; i < N + 1; i++)
-            {
-                for (int j = 0; j < N; j++)
-                {
-                    if (d[i, j] == 0)
-                    {
-                        continue;
-                    }
-
-                    foreach (var (i2, j2) in new[] { (i - 1, j), (i, j - 1), (i + 1, j), (i, j + 1) })
-                    {
-                        if (i2 >= 0 && i2 < N + 1 && j2 >= 0 && j2 < N)
-                        {
-                            if (d[i2, j2] == 0)
-                            {
-                                d[i, j] = 1;
-                                W.Add(Tuple.Create(i, j));
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Perform the main extrapolation loop
-            int t = 0;
-            while (t < W.Count)
-            {
-                var (i, j) = W[t];
-                double newU = 0;
-                int count = 0;
-                foreach (var (i2, j2) in new[] { (i - 1, j), (i, j - 1), (i + 1, j), (i, j + 1) })
-                {
-                    if (i2 >= 0 && i2 < N + 1 && j2 >= 0 && j2 < N)
-                    {
-                        //check if the cell is closer to boundary
-                        if (d[i2, j2] < d[i, j])
-                        {
-                            newU += u[i2*numY + j2];
-                            count++;
-                        }
-                    }
-                }
-                u[i*numY + j] = newU / count;
-
-                foreach (var (i2, j2) in new[] { (i - 1, j), (i, j - 1), (i + 1, j), (i, j + 1) })
-                {
-                    if (i2 >= 0 && i2 < N + 1 && j2 >= 0 && j2 < N)
-                    {
-                        if (d[i2, j2] == maxint)
-                        {
-                            d[i2, j2] = d[i, j] + 1;
-                            W.Add(Tuple.Create(i2, j2));
-                        }
-                    }
-                }
-                t++;
-            }
-
-            // Clear distance array for the next pass
-            d = new int[N, N + 1];
-            W.Clear();
-
-            // Second pass for v
-            for (int i = 0; i < N; i++)
-            {
-                for (int j = 0; j < N - 1; j++)
-                {
-                    if (s[i*numY+j] == 1 || s[i*numY+ j + 1] == 1)
-                    {
-                        d[i, j + 1] = 0;
-                    }
-                }
-            }
-
-            // Initialize W list with cells having a FLUID neighbor
-            for (int i = 0; i < N; i++)
-            {
-                for (int j = 0; j < N + 1; j++)
-                {
-                    if (d[i, j] == 0)
-                    {
-                        continue;
-                    }
-
-                    foreach (var (i2, j2) in new[] { (i - 1, j), (i, j - 1), (i + 1, j), (i, j + 1) })
-                    {
-                        if (i2 >= 0 && i2 < N && j2 >= 0 && j2 < N + 1)
-                        {
-                            if (d[i2, j2] == 0)
-                            {
-                                d[i, j] = 1;
-                                W.Add(Tuple.Create(i, j));
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Perform the main extrapolation loop for v
-            t = 0;
-            while (t < W.Count)
-            {
-                var (i, j) = W[t];
-                double newV = 0;
-                int count = 0;
-                foreach (var (i2, j2) in new[] { (i - 1, j), (i, j - 1), (i + 1, j), (i, j + 1) })
-                {
-                    if (i2 >= 0 && i2 < N && j2 >= 0 && j2 < N + 1)
-                    {
-                        if (d[i2, j2] < d[i, j])
-                        {
-                            newV += v[i2*numY+ j2];
-                            count++;
-                        }
-                    }
-                }
-                v[i*numY+j] = newV / count;
-
-                foreach (var (i2, j2) in new[] { (i - 1, j), (i, j - 1), (i + 1, j), (i, j + 1) })
-                {
-                    if (i2 >= 0 && i2 < N && j2 >= 0 && j2 < N + 1)
-                    {
-                        if (d[i2, j2] == maxint)
-                        {
-                            d[i2, j2] = d[i, j] + 1;
-                            W.Add(Tuple.Create(i2, j2));
-                        }
-                    }
-                }
-                t++;
-            }
-        }
 
         public double SampleField(double x, double y, int field)
         {
@@ -708,7 +535,7 @@ public class fluidShowerV2 : MonoBehaviour
             return v;
         }
 
-        public void AdvectVel(float dt)
+        public void AdvectVel()
         {
             // Copy current velocities to temporary arrays
             this.newU = (double[])this.u.Clone();
@@ -723,7 +550,7 @@ public class fluidShowerV2 : MonoBehaviour
                 for (int j = 1; j < this.numY; j++)
                 {
                     // u component
-                    if (this.s[i * n + j] != 0.0f && this.s[(i - 1) * n + j] != 0.0f && j < this.numY - 1)
+                    if (this.types[i * n + j] != 0.0f && this.types[(i - 1) * n + j] != 0.0f && j < this.numY - 1)
                     {
                         double x = i * h;
                         double y = j * h + h2;
@@ -735,7 +562,7 @@ public class fluidShowerV2 : MonoBehaviour
                         this.newU[i * n + j] = u;
                     }
                     // v component
-                    if (this.s[i * n + j] != 0.0f && this.s[i * n + j - 1] != 0.0f && i < this.numX - 1)
+                    if (this.types[i * n + j] != 0.0f && this.types[i * n + j - 1] != 0.0f && i < this.numX - 1)
                     {
                         double x = i * h + h2;
                         double y = j * h;
@@ -754,7 +581,7 @@ public class fluidShowerV2 : MonoBehaviour
             Array.Copy(this.newV, this.v, this.v.Length);
         }
 
-        public void AdvectSmoke(float dt)
+        public void AdvectSmoke()
         {
             // Copy current smoke density to a temporary array
             this.newM = (double[])this.m.Clone();
@@ -767,7 +594,7 @@ public class fluidShowerV2 : MonoBehaviour
             {
                 for (int j = 1; j < this.numY - 1; j++)
                 {
-                    if (this.s[i * n + j] != 0.0f)
+                    if (this.types[i * n + j] != 0.0f)
                     {
                         double u = (this.u[i * n + j] + this.u[(i + 1) * n + j]) * 0.5f;
                         double v = (this.v[i * n + j] + this.v[i * n + j + 1]) * 0.5f;
@@ -783,6 +610,95 @@ public class fluidShowerV2 : MonoBehaviour
             // Update smoke density with advected values
             Array.Copy(this.newM, this.m, this.m.Length);
         }
+
+
+        float BilinearInterpU(Vector2 p)
+        {
+            float x = Mathf.Clamp(p.x, 0, numX - 0.0001f);
+            float y = Mathf.Clamp(p.y, 0.5f, numY - 0.5001f);
+            int x1 = (int)x;
+            int x2 = x1 + 1;
+            int y1 = (int)(y - 0.5f) + 1;
+            int y2 = y1 + 1;
+            int i = (int)x;
+            int j = (int)(y - 0.5f);
+
+            var b = Matrix<float>.Build.Dense(2, 2);
+
+            b[0, 0] = (float)u[i * numY + j];
+            b[0, 1] = (float)u[i * numY + j + 1];
+            b[1, 0] = (float)u[(i + 1) * numY + j];
+            b[1, 1] = (float)u[(i + 1) * numY + j + 1];
+
+            Vector<float> a = Vector<float>.Build.Dense(new float[] { x2 - x, x - x1 });
+            Vector<float> c = Vector<float>.Build.Dense(new float[] { y2 - y, y - y1 });
+
+            return (a.ToRowMatrix() * b * c.ToColumnMatrix())[0, 0] / ((x2 - x1) * (y2 - y1));
+
+            /*
+            float Q11 = u[i, j];
+            float Q12 = u[i, j + 1];
+            float Q21 = u[i + 1, j];
+            float Q22 = u[i + 1, j + 1];
+            float a0 = x2 - x;
+            float a1 = x - x1;
+            float b0 = y2 - y;
+            float b1 = y - y1;
+            return a0 * (b0 * Q11 + b1 * Q12) + a1 * (b0 * Q21 + b1 * Q22);
+             */
+        }
+
+        float BilinearInterpV(Vector2 p)
+        {
+            float x = Mathf.Clamp(p.x, 0.5f, numX - 0.5001f);
+            float y = Mathf.Clamp(p.y, 0, numY - 0.0001f);
+            int x1 = (int)(x - 0.5f) + 1;
+            int x2 = x1 + 1;
+            int y1 = (int)y;
+            int y2 = y1 + 1;
+            int i = (int)(x - 0.5f);
+            int j = (int)y;
+
+
+            var b = Matrix<float>.Build.Dense(2, 2);
+
+            b[0, 0] = (float)v[i * numY + j];
+            b[0, 1] = (float)v[i * numY + j + 1];
+            b[1, 0] = (float)v[(i + 1) * numY + j];
+            b[1, 1] = (float)v[(i + 1) * numY + j + 1];
+
+            Vector<float> a = Vector<float>.Build.Dense(new float[] { x2 - x, x - x1 });
+            Vector<float> c = Vector<float>.Build.Dense(new float[] { y2 - y, y - y1 });
+
+            return (a.ToRowMatrix() * b * c.ToColumnMatrix())[0, 0] / ((x2 - x1) * (y2 - y1));
+
+            /*float Q11 = v[i, j];
+            float Q12 = v[i, j + 1];
+            float Q21 = v[i + 1, j];
+            float Q22 = v[i + 1, j + 1];
+            float a0 = x2 - x;
+            float a1 = x - x1;
+            float b0 = y2 - y;
+            float b1 = y - y1;
+            y = a0 * (b0 * Q11 + b1 * Q12) + a1 * (b0 * Q21 + b1 * Q22);
+            return y;*/
+        }
+
+
+        Vector2 RK2(Vector2 curr)
+        {
+            Vector2 k1 = new Vector2(BilinearInterpU(curr), BilinearInterpV(curr));
+            Vector2 k2 = new Vector2(BilinearInterpU(curr + 0.5f * dt * k1), BilinearInterpV(curr + 0.5f * dt * k1));
+            return curr + dt * k2;
+        }
+
+        Vector2 BackwardsRK2(Vector2 curr)
+        {
+            Vector2 k1 = new Vector2(BilinearInterpU(curr), BilinearInterpV(curr));
+            Vector2 k2 = new Vector2(BilinearInterpU(curr - 0.5f * dt * k1), BilinearInterpV(curr - 0.5f * dt * k1));
+            return curr - dt * k2;
+        }
+
 
         public void addHorizontalForce()
         {
@@ -812,20 +728,11 @@ public class fluidShowerV2 : MonoBehaviour
             }
         }
 
-        public void setUp()
-        {
-            for (int i = 0; i < numY; i++)
-            {
-                if (i < numY * 1 / 3 || i > numY * 2 / 3)
-                    continue;
-                m[2 * numY + i] = 1;
-                //u[2 * numY + i] = fluidShower.horizontalForce;
-            }
-        }
 
-        public void Simulate(float dt, float gravity)
-        {
 
+        public void Simulate(float gravity)
+        {
+            Debug.Log(dt);
             if (fluidShower.activateHorizontalFore)
             {
                 addHorizontalForce();
@@ -833,12 +740,12 @@ public class fluidShowerV2 : MonoBehaviour
 
             //Array.Clear(p, 0, p.Length);
 
-            AdvectVel(dt);
-            AdvectSmoke(dt);
+            AdvectVel();
+            AdvectSmoke();
 
-            Integrate(dt, gravity);
+            Integrate(gravity);
 
-            SolveIncompressibility(dt);
+            SolveIncompressibility();
             Extrapolate();
 
 
@@ -854,7 +761,7 @@ public class fluidShowerV2 : MonoBehaviour
                     continue;
 
                 coordinate = fluidShower.blockInfos[block];
-                s[coordinate.x * numY + coordinate.y] = 0;
+                types[coordinate.x * numY + coordinate.y] = 0;
                 m[coordinate.x * numY + coordinate.y] = 0;
                 u[coordinate.x * numY + coordinate.y] = obstacleVelocity.x;
                 v[coordinate.x * numY + coordinate.y] = obstacleVelocity.y;
@@ -871,7 +778,7 @@ public class fluidShowerV2 : MonoBehaviour
                     continue;
                 Debug.Log("Debolcked object");
                 coordinate = fluidShower.blockInfos[block];
-                s[coordinate.x * numY + coordinate.y] = 1;
+                types[coordinate.x * numY + coordinate.y] = 1;
             }
         }
 

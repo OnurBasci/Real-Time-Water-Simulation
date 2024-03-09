@@ -819,7 +819,7 @@ public class FluidSimulationV3 : MonoBehaviour
         Debug.Log("max div is " + m);
     }
 
-    static int FindMax(float[,] array)
+    public static int FindMax(float[,] array)
     {
         int max = int.MinValue;
         foreach (int element in array)
@@ -830,7 +830,7 @@ public class FluidSimulationV3 : MonoBehaviour
         return max;
     }
 
-    static int FindMin(float[,] array)
+    public static int FindMin(float[,] array)
     {
         int min = int.MaxValue;
         foreach (int element in array)
