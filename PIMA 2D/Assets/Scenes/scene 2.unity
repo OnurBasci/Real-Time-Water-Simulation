@@ -407,13 +407,16 @@ MonoBehaviour:
   numX: 25
   numY: 25
   h: 1
-  currentField: 0
+  currentField: 1
   activateHorizontalFore: 0
-  addCircleToMiddle: 0
+  waterFallingScene: 1
+  circleScene: 0
   horizontalForce: 100
   printVolume: 0
   printGrid: 0
   simulateWater: 1
+  showVelocityArrow: 1
+  showParticles: 1
 --- !u!114 &1481742652
 MonoBehaviour:
   m_ObjectHideFlags: 0

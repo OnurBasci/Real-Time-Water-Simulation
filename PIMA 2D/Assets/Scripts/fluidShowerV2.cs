@@ -22,11 +22,14 @@ public class fluidShowerV2 : MonoBehaviour
     public float h = 1;
     public FieldType currentField;
     public bool activateHorizontalFore = false;
-    public bool addCircleToMiddle = false;
+    public bool waterFallingScene = true;
+    public bool circleScene = false;
     public float horizontalForce = 40;
     public bool printVolume = false;
     public bool printGrid = false;
     public bool simulateWater = true;
+    public bool showVelocityArrow = true;
+    public bool showParticles = true;
 
     private float deltaTime;
 
@@ -61,13 +64,10 @@ public class fluidShowerV2 : MonoBehaviour
 
         fluid = new Fluid(density, numX, numY, h, dt, this);
         GenerateGrid(fluid);
-        putRedArrowsOnGrid(fluid);
-        //fluid.setUp();
 
-        if(addCircleToMiddle)
-        {
-            fluid.addCircleFluidToMiddle();
-        }
+        if(showVelocityArrow)
+            putRedArrowsOnGrid(fluid);
+        //fluid.setUp();
 
 
         bufferZeroArray = new double[numX * numY, numX * numY];
@@ -93,7 +93,8 @@ public class fluidShowerV2 : MonoBehaviour
         if(simulateWater)
         {
             showWater(fluid);
-            updateArrows(fluid);
+            if(showVelocityArrow)
+                updateArrows(fluid);
         }
         else
         {
@@ -167,7 +168,7 @@ public class fluidShowerV2 : MonoBehaviour
 
                 UnityEngine.Color color = new UnityEngine.Color((float)c, (float)c, (float)c);
 
-                blockObjectsArray[j, i].GetComponent<SpriteRenderer>().color = color;
+                blockObjectsArray[j, i].GetComponentInChildren<SpriteRenderer>().color = color;
             }
         }
     }
@@ -365,17 +366,15 @@ public class fluidShowerV2 : MonoBehaviour
                 types[i * numY + (numY - 1)] = SOLID;
             }
 
-            for (int j = 1; j < numY - 1; j++)
-            {
-                for (int i = 1; i < numX / 2; i++)
-                {
-                    types[i* numY + j] = FLUID;
-                }
-            }
+            //set scene
+            if (fluidShower.waterFallingScene)
+                setWaterFallingScene();
+            else if (fluidShower.circleScene)
+                setCircleScene();
 
             //initialize particles
             this.particles = new List<Vector2>();
-            for (int i = 1; i < numX; i++)
+            for (int i = 2; i < numX; i++)
             {
                 for (int j = 1; j < numY; j++)
                 {
@@ -393,13 +392,45 @@ public class fluidShowerV2 : MonoBehaviour
                 }
             }
 
-            foreach (var particle in particles)
+            if (fluidShower.showParticles)
             {
-                var pObject = Instantiate(fluidShower.particleObject, particle, Quaternion.identity);
-                fluidShower.particleObjects.Add(pObject);
+                foreach (var particle in particles)
+                {
+                    var pObject = Instantiate(fluidShower.particleObject, particle, Quaternion.identity);
+                    fluidShower.particleObjects.Add(pObject);
+                }
             }
-
         }
+
+        #region SCENE SET FUNCTIONS
+        void setWaterFallingScene()
+        {
+            for (int j = 1; j < numY - 1; j++)
+            {
+                for (int i = 1; i < numX / 2; i++)
+                {
+                    types[i * numY + j] = FLUID;
+                }
+            }
+        }
+
+        void setCircleScene()
+        {
+            Vector2 Center = new Vector2((int)(numX /2), (int)(numY/1.5));
+            float radius = 30f;
+
+            for (int i = 0; i < numX; i++)
+            {
+                for (int j = 0; j < numY; j++)
+                {
+                    if ((math.pow(i - Center.x, 2) + math.pow(j - Center.y, 2)) < radius)
+                    {
+                        types[i * numY + j] = FLUID;
+                    }
+                }
+            }
+        }
+        #endregion
 
         private void Integrate(float gravity)
         {
@@ -412,38 +443,6 @@ public class fluidShowerV2 : MonoBehaviour
                     {
                         this.v[i * n + j] += gravity * dt;
                     }
-                }
-            }
-        }
-
-        private void SolveIncompressibility()
-        {
-            DenseMatrix u = DenseMatrix.Create(numX, numY, 0);
-            DenseMatrix v = DenseMatrix.Create(numX, numY, 0);
-            DenseMatrix p = DenseMatrix.Create(numX, numY, 0);
-            DenseMatrix t = DenseMatrix.Create(numX, numY, 0);
-
-            for(int i = 0; i < numX; i ++)
-            {
-                for(int j = 0; j < numY; j++)
-                {
-                    u[i,j] = this.u[i*numY + j];
-                    v[i,j] = this.v[i*numY + j];
-                    p[i,j] = this.p[i*numY + j];
-                    t[i,j] = this.types[i*numY + j];
-                }
-            }
-
-            Projector projector = new Projector(u, v, p, t, numX, dt, density);
-            projector.Project();
-
-            for (int i = 0; i < numX; i++)
-            {
-                for (int j = 0; j < numY; j++)
-                {
-                    this.u[i * numY + j] = projector.u[i,j];
-                    this.v[i * numY + j] = projector.v[i,j];
-                    this.p[i * numY + j] = projector.p[i,j];
                 }
             }
         }
@@ -550,7 +549,7 @@ public class fluidShowerV2 : MonoBehaviour
                         continue;
                     }
 
-                    u2[(i + 1) * numY + j] -= (dt / density * (rightP - leftP));
+                    u2[(i + 1) * numY + j] -= dt * (rightP - leftP);
                 }
             }
 
@@ -587,11 +586,25 @@ public class fluidShowerV2 : MonoBehaviour
                         continue;
                     }
 
-                    v2[i * numY + j + 1] -= (dt / density * (topP - bottomP));
+                    v2[i * numY + j + 1] -= dt * (topP - bottomP);
                 }
             }
             u = u2;
             v = v2;
+
+            //if we want to show the pressure field we stock it in the p array
+            if (fluidShower.simulateWater) return;
+            
+            for(int i = 0; i < numX; i++)
+            {
+                for(int j = 0; j < numY -1; j++)
+                {
+                    if (fluidDict.ContainsKey(new Vector2Int(i, j)))
+                        p[i * numY + j] = x[fluidDict[new Vector2Int(i, j)]];
+                    else
+                        p[i * numY + j] = 0;
+                }
+            }
         }
 
 
@@ -946,9 +959,12 @@ public class fluidShowerV2 : MonoBehaviour
                 }
             }
 
-            for (int idx = 0; idx < particles.Count; idx++)
+            if(fluidShower.showParticles)
             {
-                fluidShower.particleObjects[idx].transform.position = particles[idx];
+                for (int idx = 0; idx < particles.Count; idx++)
+                {
+                    fluidShower.particleObjects[idx].transform.position = particles[idx];
+                }
             }
         }
 
@@ -1050,24 +1066,6 @@ public class fluidShowerV2 : MonoBehaviour
                 u[2 * numY + i] = fluidShower.horizontalForce;
             }
         }
-
-        public void addCircleFluidToMiddle()
-        {
-            Vector2 Center = new Vector2((int)(numX / 2), (int)(numY / 2));
-            float radius = 10f;
-
-            for (int i = 0; i < numX; i++)
-            {
-                for (int j = 0; j < numY; j++)
-                {
-                    if ((math.pow(i - Center.x, 2) + math.pow(j - Center.y, 2)) < radius)
-                    {
-                        m[i * numY + j] = 1;
-                    }
-                }
-            }
-        }
-
 
 
         public void Simulate(float gravity)
