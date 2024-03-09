@@ -420,6 +420,7 @@ public class fluidShowerV2 : MonoBehaviour
             DenseMatrix u = DenseMatrix.Create(numX, numY, 0);
             DenseMatrix v = DenseMatrix.Create(numX, numY, 0);
             DenseMatrix p = DenseMatrix.Create(numX, numY, 0);
+            DenseMatrix t = DenseMatrix.Create(numX, numY, 0);
 
             for(int i = 0; i < numX; i ++)
             {
@@ -428,10 +429,11 @@ public class fluidShowerV2 : MonoBehaviour
                     u[i,j] = this.u[i*numY + j];
                     v[i,j] = this.v[i*numY + j];
                     p[i,j] = this.p[i*numY + j];
+                    t[i,j] = this.types[i*numY + j];
                 }
             }
 
-            Projector projector = new Projector(u, v, p, numX, dt, density);
+            Projector projector = new Projector(u, v, p, t, numX, dt, density);
             projector.Project();
 
             for (int i = 0; i < numX; i++)
@@ -445,6 +447,151 @@ public class fluidShowerV2 : MonoBehaviour
             }
         }
 
+
+        void Project()
+        {
+            List<Vector2Int> fluidCells = new List<Vector2Int>();
+            Dictionary<Vector2Int, int> fluidDict = new Dictionary<Vector2Int, int>();
+            for (int i = 0; i < numX; i++)
+            {
+                for (int j = 0; j < numY; j++)
+                {
+                    if (types[i * numY + j] == FLUID)
+                    {
+                        fluidCells.Add(new Vector2Int(i, j));
+                        fluidDict[new Vector2Int(i, j)] = fluidCells.Count - 1;
+                    }
+                }
+            }
+            int nFluid = fluidCells.Count;
+            //float[,] A = new float[nFluid, nFluid];
+            //float[] b = new float[nFluid];
+
+            var A = Matrix<float>.Build.Dense(nFluid, nFluid);
+            var b = Vector<float>.Build.Dense(nFluid);
+
+            for (int idx = 0; idx < nFluid; idx++)
+            {
+                int i = fluidCells[idx].x;
+                int j = fluidCells[idx].y;
+
+                if (types[(i - 1) * numY + j] == FLUID)
+                    A[idx, fluidDict[new Vector2Int(i - 1, j)]] = -1;
+                if (types[i * numY + j - 1] == FLUID)
+                    A[idx, fluidDict[new Vector2Int(i, j - 1)]] = -1;
+                if (types[(i + 1) * numY + j] == FLUID)
+                    A[idx, fluidDict[new Vector2Int(i + 1, j)]] = -1;
+                if (types[i * numY + j + 1] == FLUID)
+                    A[idx, fluidDict[new Vector2Int(i, j + 1)]] = -1;
+
+                int nonSolid = 0;
+                double D = 0;
+
+                if (types[(i - 1) * numY + j] != SOLID)
+                {
+                    D -= u[i * numY + j];
+                    nonSolid++;
+                }
+                if (types[i * numY + j - 1] != SOLID)
+                {
+                    D -= v[i * numY + j];
+                    nonSolid++;
+                }
+                if (types[(i + 1) * numY + j] != SOLID)
+                {
+                    D += u[(i + 1) * numY + j];
+                    nonSolid++;
+                }
+                if (types[i * numY + j + 1] != SOLID)
+                {
+                    D += v[i * numY + j + 1];
+                    nonSolid++;
+                }
+
+                A[idx, idx] = nonSolid;
+                b[idx] = -(density / dt) * (float)D;
+            }
+
+            //float[] x = new float[nFluid];
+            // Use a solver to solve Ax = b, you can use a solver library or implement your own solver
+            var x = A.Solve(b);
+
+            // Update u2
+            double[] u2 = new double[u.Length];
+            Array.Copy(u, u2, u.Length);
+
+            for (int i = 0; i < numX - 1; i++)
+            {
+                for (int j = 0; j < numY; j++)
+                {
+                    if (types[i * numY + j] != FLUID && types[(i + 1) * numY + j] != FLUID)
+                        continue;
+
+                    float rightP = 0, leftP = 0;
+
+                    if (types[(i + 1) * numY + j] == FLUID)
+                        rightP = x[fluidDict[new Vector2Int(i + 1, j)]];
+                    if (types[(i + 1) * numY + j] == EMPTY)
+                        rightP = 0;
+                    if (types[(i + 1) * numY + j] == SOLID)
+                    {
+                        u2[(i + 1) * numY + j] = 0;
+                        continue;
+                    }
+
+                    if (types[i * numY + j] == FLUID)
+                        leftP = x[fluidDict[new Vector2Int(i, j)]];
+                    if (types[i * numY + j] == EMPTY)
+                        leftP = 0;
+                    if (types[i * numY + j] == SOLID)
+                    {
+                        u2[(i + 1) * numY + j] = 0;
+                        continue;
+                    }
+
+                    u2[(i + 1) * numY + j] -= (dt / density * (rightP - leftP));
+                }
+            }
+
+            // Update v2
+            double[] v2 = new double[v.Length];
+            Array.Copy(v, v2, v.Length);
+
+            for (int i = 0; i < numX; i++)
+            {
+                for (int j = 0; j < numX - 1; j++)
+                {
+                    if (types[i * numY + j] != FLUID && types[i * numY + j + 1] != FLUID)
+                        continue;
+
+                    float topP = 0, bottomP = 0;
+
+                    if (types[i * numY + j + 1] == FLUID)
+                        topP = x[fluidDict[new Vector2Int(i, j + 1)]];
+                    if (types[i * numY + j + 1] == EMPTY)
+                        topP = 0;
+                    if (types[i * numY + j + 1] == SOLID)
+                    {
+                        v2[i * numY + j + 1] = 0;
+                        continue;
+                    }
+
+                    if (types[i * numY + j] == FLUID)
+                        bottomP = x[fluidDict[new Vector2Int(i, j)]];
+                    if (types[i * numY + j] == EMPTY)
+                        bottomP = 0;
+                    if (types[i * numY + j] == SOLID)
+                    {
+                        v2[i * numY + j + 1] = 0;
+                        continue;
+                    }
+
+                    v2[i * numY + j + 1] -= (dt / density * (topP - bottomP));
+                }
+            }
+            u = u2;
+            v = v2;
+        }
 
 
         private void Extrapolate()
@@ -778,7 +925,8 @@ public class fluidShowerV2 : MonoBehaviour
 
             AdvectVel();
             //AdvectSmoke();
-            SolveIncompressibility();
+            //SolveIncompressibility();
+            Project();
             Extrapolate();
 
             MoveParticles();

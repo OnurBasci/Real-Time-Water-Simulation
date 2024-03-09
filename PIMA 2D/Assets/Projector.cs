@@ -33,23 +33,15 @@ public class Projector
         RandomizeVectorField();
     }
 
-    public Projector(DenseMatrix u, DenseMatrix v, DenseMatrix p, int N, double dt, float density)
+    public Projector(DenseMatrix u, DenseMatrix v, DenseMatrix p, DenseMatrix t, int N, double dt, float density)
     {
         this.N = N;
         this.dt = dt;
-        // Initialize types matrix
-        types = DenseMatrix.Create(N, N, FLUID);
-        for (int i = 0; i < N; i++)
-        {
-            types[0, i] = SOLID;
-            types[i, 0] = SOLID;
-            types[N - 1, i] = SOLID;
-            types[i, N - 1] = SOLID;
-        }
 
         this.u = u;
         this.v = v;
         this.p = p;
+        this.types = t;
         this.density = density;
     }
 

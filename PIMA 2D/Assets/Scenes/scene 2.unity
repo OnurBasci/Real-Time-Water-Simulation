@@ -398,18 +398,21 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   squarePrefab: {fileID: 5250644498787222862, guid: 757ecd8ed2cc16d4db1041580643bf5d, type: 3}
+  particleObject: {fileID: 4549579260139866676, guid: b034bda007b0426449e63c0bd2554fc9, type: 3}
+  redArrow: {fileID: 8153243491481204319, guid: a596717e7ed73b5428055996bf67ca99, type: 3}
   squareSize: 1
   gravity: -9.81
   density: 1
-  numX: 25
-  numY: 25
+  numX: 16
+  numY: 16
   h: 1
-  currentField: 1
+  currentField: 0
   activateHorizontalFore: 0
-  addCircleToMiddle: 1
+  addCircleToMiddle: 0
   horizontalForce: 100
-  printVolume: 1
+  printVolume: 0
   printGrid: 0
+  simulateWater: 1
 --- !u!114 &1481742652
 MonoBehaviour:
   m_ObjectHideFlags: 0
