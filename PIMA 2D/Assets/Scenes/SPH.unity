@@ -177,7 +177,7 @@ Camera:
   far clip plane: 1000
   field of view: 60
   orthographic: 1
-  orthographic size: 6.487566
+  orthographic size: 13.787662
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
@@ -201,7 +201,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 703400644}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 5, y: 5, z: -10}
+  m_LocalPosition: {x: 24.5, y: 13.7, z: -10}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -251,6 +251,7 @@ GameObject:
   m_Component:
   - component: {fileID: 773940262}
   - component: {fileID: 773940261}
+  - component: {fileID: 773940263}
   m_Layer: 0
   m_Name: Fluid Simulation
   m_TagString: Untagged
@@ -273,14 +274,16 @@ MonoBehaviour:
   particleObject: {fileID: 7815605973295585089, guid: 98dbef7931cefe94ead96d73055f2a92, type: 3}
   gravity: 0
   density: 1
-  particleNumber: 100
+  particleNumber: 500
   particleRadius: 0.2
-  particleDistance: 1
+  particleHorizontalDistance: 1
+  particleVerticalDistance: 0.5
   smoothingRadius: 5
-  K_temp: 5
+  K_temp: 1
   collisionDamping: 0.7
   horizontalBoundaries: {x: -10, y: 10}
   verticalBoundaries: {x: -10, y: 10}
+  spawnType: 1
 --- !u!4 &773940262
 Transform:
   m_ObjectHideFlags: 0
@@ -296,3 +299,20 @@ Transform:
   m_Father: {fileID: 0}
   m_RootOrder: 1
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &773940263
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 773940260}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 315c354955a83614a889a85f6b57b555, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  squareObject: {fileID: 4182834041252200420, guid: a5a46eb5ab329774c96874b0d2b814ef, type: 3}
+  thresh: 0.05
+  width: 20
+  height: 20
+  sphSim: {fileID: 773940261}
