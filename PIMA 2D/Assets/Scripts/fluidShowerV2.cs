@@ -549,7 +549,7 @@ public class fluidShowerV2 : MonoBehaviour
                         continue;
                     }
 
-                    u2[(i + 1) * numY + j] -= dt * (rightP - leftP);
+                    u2[(i + 1) * numY + j] -= (dt/density) * (rightP - leftP);
                 }
             }
 
@@ -586,7 +586,7 @@ public class fluidShowerV2 : MonoBehaviour
                         continue;
                     }
 
-                    v2[i * numY + j + 1] -= dt * (topP - bottomP);
+                    v2[i * numY + j + 1] -= (dt/density) * (topP - bottomP);
                 }
             }
             u = u2;
@@ -1060,7 +1060,7 @@ public class fluidShowerV2 : MonoBehaviour
         {
             for (int i = 0; i < numY; i++)
             {
-                if (i < numY * 2 / 5 || i > numY * 3 / 5)
+                if (i < 2 || i > numY * 1/ 2)
                     continue;
                 m[2 * numY + i] = 1;
                 u[2 * numY + i] = fluidShower.horizontalForce;
@@ -1077,11 +1077,17 @@ public class fluidShowerV2 : MonoBehaviour
 
             //Array.Clear(p, 0, p.Length);
 
+            float startTime = Time.realtimeSinceStartup;
             AdvectVel();
-            //AdvectSmoke();
-            //SolveIncompressibility();
+            Debug.Log("The time passed to execute the advection: " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
+
+            startTime = Time.realtimeSinceStartup;
             Project();
+            Debug.Log("The time passed to execute the projection: " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
+
+            startTime = Time.realtimeSinceStartup;
             Extrapolate();
+            Debug.Log("The time passed to execute the Extrapolation: " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
             MoveParticles();
 

@@ -402,7 +402,7 @@ MonoBehaviour:
   redArrow: {fileID: 8153243491481204319, guid: a596717e7ed73b5428055996bf67ca99, type: 3}
   squareSize: 1
   gravity: -9.81
-  density: 1
+  density: 2
   dt: 0.05
   numX: 25
   numY: 25

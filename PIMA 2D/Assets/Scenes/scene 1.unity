@@ -210,7 +210,7 @@ Camera:
   far clip plane: 1000
   field of view: 34
   orthographic: 1
-  orthographic size: 14.133656
+  orthographic size: 23
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
@@ -234,7 +234,7 @@ Transform:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 519420028}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: 26.5, y: 22.4, z: -10}
+  m_LocalPosition: {x: 41.4, y: 25, z: -10}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -393,7 +393,8 @@ MonoBehaviour:
   numIter: 40
   currentField: 0
   activateHorizontalFore: 1
-  horizontalForce: 80
+  addCircleToMiddle: 0
+  horizontalForce: 120
 --- !u!4 &1481742650
 Transform:
   m_ObjectHideFlags: 0
@@ -519,15 +520,19 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7528791043427278676, guid: 3f6bf1e7430a81545b92dc68fb0144ca, type: 3}
       propertyPath: m_LocalScale.x
-      value: 6.438867
+      value: 13.123467
+      objectReference: {fileID: 0}
+    - target: {fileID: 7528791043427278676, guid: 3f6bf1e7430a81545b92dc68fb0144ca, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 22.046934
       objectReference: {fileID: 0}
     - target: {fileID: 7528791043427278676, guid: 3f6bf1e7430a81545b92dc68fb0144ca, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 5.4
+      value: 19.8001
       objectReference: {fileID: 0}
     - target: {fileID: 7528791043427278676, guid: 3f6bf1e7430a81545b92dc68fb0144ca, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 1.25
+      value: 8.8357
       objectReference: {fileID: 0}
     - target: {fileID: 7528791043427278676, guid: 3f6bf1e7430a81545b92dc68fb0144ca, type: 3}
       propertyPath: m_LocalPosition.z
@@ -571,7 +576,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 7528791043427278679, guid: 3f6bf1e7430a81545b92dc68fb0144ca, type: 3}
       propertyPath: m_IsActive
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     m_RemovedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 3f6bf1e7430a81545b92dc68fb0144ca, type: 3}

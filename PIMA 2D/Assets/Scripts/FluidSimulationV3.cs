@@ -23,7 +23,6 @@ public class FluidSimulationV3 : MonoBehaviour
 
     float[,] u;
     float[,] v;
-    float gy = -0.4f;
     const int SOLID = 0, FLUID = 1, EMPTY = 2;
     int[,] types;
 
