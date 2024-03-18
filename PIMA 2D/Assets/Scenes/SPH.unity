@@ -177,7 +177,7 @@ Camera:
   far clip plane: 1000
   field of view: 60
   orthographic: 1
-  orthographic size: 7.3032756
+  orthographic size: 6.487566
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
@@ -273,10 +273,12 @@ MonoBehaviour:
   particleObject: {fileID: 7815605973295585089, guid: 98dbef7931cefe94ead96d73055f2a92, type: 3}
   gravity: 0
   density: 1
-  particleNumber: 75
+  particleNumber: 100
   particleRadius: 0.2
+  particleDistance: 1
   smoothingRadius: 5
-  K_temp: 1
+  K_temp: 5
+  collisionDamping: 0.7
   horizontalBoundaries: {x: -10, y: 10}
   verticalBoundaries: {x: -10, y: 10}
 --- !u!4 &773940262

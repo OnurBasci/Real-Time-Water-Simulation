@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using Unity.Mathematics;
@@ -26,7 +27,9 @@ public class SPHSimulation : MonoBehaviour
     public Vector2 verticalBoundaries = new Vector2(0, 10);
 
     private List<GameObject> particlesObjects = new List<GameObject>();
-    private List<Particle> particles = new List<Particle>(); 
+    private Particle[] particles;
+
+    private float[] densities;
 
     class Particle
     {
@@ -46,6 +49,8 @@ public class SPHSimulation : MonoBehaviour
 
     private void Start()
     {
+        densities = new float[particleNumber];
+
         //set the boundaries as camera boundaries
         Vector3 cameraCenter = Camera.main.transform.position;
         float halfHeight = Camera.main.orthographicSize;
@@ -62,39 +67,52 @@ public class SPHSimulation : MonoBehaviour
 
     private void spawnParticles()
     {
+        particles = new Particle[particleNumber];
+
         Vector3 cameraCenter = Camera.main.transform.position;
         Vector3 spawnPos;
 
-        int particleNumByEdge = (int) Mathf.Sqrt(particleNumber);
-        for(int i = -particleNumByEdge/2; i < particleNumByEdge/2; i++)
+        int numColumn = (int)Mathf.Sqrt(particleNumber);
+        int lastLineParticles = particleNumber % numColumn;
+
+        Vector3 offset = Vector3.one * numColumn / 2 * particleDistance;
+
+        for(int i = 0; i < particleNumber; i ++)
         {
-            for(int j = -particleNumByEdge/2; j < particleNumByEdge/2; j ++)
-            {
-                spawnPos = new Vector3(cameraCenter.x + i * particleDistance, cameraCenter.y + j * particleDistance, 0);
-                GameObject p1 = Instantiate(particleObject, spawnPos, Quaternion.identity);
-                p1.transform.localScale = new Vector3(particleRadius * 2, particleRadius * 2, particleRadius * 2);
-                particlesObjects.Add(p1);
-                particles.Add(new Particle(spawnPos, new Vector3(0, 0, 0), 1, particleRadius));
-            }
+            int row = i / numColumn;
+            int column = i % numColumn;
+
+            spawnPos = new Vector3(cameraCenter.x + column * particleDistance, cameraCenter.y + row * particleDistance, 0) - offset;
+            GameObject p1 = Instantiate(particleObject, spawnPos, Quaternion.identity);
+            p1.transform.localScale = new Vector3(particleRadius * 2, particleRadius * 2, particleRadius * 2);
+            particlesObjects.Add(p1);
+            particles[i] = new Particle(spawnPos, new Vector3(0, 0, 0), 1, particleRadius);
         }
+
     }
 
     private void Update()
     {
+        //calculate densities
+        for(int i = 0; i < particleNumber; i++)
+        {
+            densities[i] = calculateDensity(particles[i]);
+        }
+
         moveParticles();
     }
 
     private void moveParticles()
     {
         Particle p_i;
-        for (int i = 0; i < particles.Count; i++)
+        for (int i = 0; i < particles.Length; i++)
         {
             //calculate the forces to apply
             p_i = particles[i];
-            Vector3 appliedForces = calculateForce(p_i);
+            Vector3 appliedForces = calculateForce(i);
 
             //update the particles position
-            Vector3 accelartion = appliedForces / calculateDensity(p_i);
+            Vector3 accelartion = appliedForces / densities[i];
             p_i.velocity += accelartion * Time.deltaTime;
             checkBoundaryConditions(p_i);
             p_i.position += p_i.velocity * Time.deltaTime;
@@ -125,39 +143,49 @@ public class SPHSimulation : MonoBehaviour
         }
     }
 
-    private Vector3 calculateForce(Particle particle)
+    private Vector3 calculateForce(int particleIndex)
     {
         //the force is calculated as the sum of the forces coming from pressure, viscocity and external forces
         Vector3 appliedForce = Vector3.zero;
-        appliedForce += addPressurseForce(particle);
-        appliedForce += addViscocityForce(particle);
+        appliedForce += addPressurseForce(particleIndex);
+        appliedForce += addViscocityForce(particleIndex);
         appliedForce += addExternalForces();
 
         return appliedForce;
     }
    
 
-    private Vector3 addPressurseForce(Particle pi)
+    private Vector3 addPressurseForce(int particleIndex)
     {
         Vector3 f_pressure = Vector3.zero;
         Vector3 dir;
-        float press_i = K_temp * (calculateDensity(pi) - density);
+        float press_i = K_temp * (densities[particleIndex] - density);
         float density_j, press_j, dist;
 
-        foreach(var pj in particles)
+        Particle pi = particles[particleIndex];
+        Particle pj;
+
+        for(int j = 0; j < particleNumber; j++)
         {
-            if (pj == pi)
+            if (j == particleIndex)
                 continue;
+
+            pj = particles[j];
+
             dist = (pi.position - pj.position).magnitude;
+
+            if (dist == 0)
+                return getRandomDirection();
+
             dir = (pj.position - pi.position) / dist;
-            density_j = calculateDensity(pj);
+            density_j = densities[j];
             press_j = K_temp * (density_j - density);
             f_pressure += (pj.mass * (press_i + press_j) / (2 * density_j)) * gradientSpikyKernel(dist, smoothingRadius) * dir;
         }
         return -f_pressure;  
     }
 
-    private Vector3 addViscocityForce(Particle pi)
+    private Vector3 addViscocityForce(int particleIndex)
     {
         return Vector3.zero;
     }
@@ -207,5 +235,10 @@ public class SPHSimulation : MonoBehaviour
             return -(45 / (math.PI * math.pow(h, 6))) * math.pow(h - r, 2);
         }
         return 0;
+    }
+
+    private Vector3 getRandomDirection()
+    {
+        return new Vector3(UnityEngine.Random.Range(-1.0f, 1.0f), UnityEngine.Random.Range(-1.0f, 1.0f), 0).normalized;
     }
 }
