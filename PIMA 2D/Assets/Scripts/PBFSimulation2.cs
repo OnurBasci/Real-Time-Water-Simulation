@@ -1,13 +1,11 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.Mathematics;
-using UnityEngine.UI;
-using JetBrains.Annotations;
+using Unity.Jobs;
+using Unity.Collections;
 using Unity.VisualScripting;
-using UnityEditor.UIElements;
-using System;
 
-public class PBFSimulation : MonoBehaviour
+public class PBFSimulation2 : MonoBehaviour
 {
     public GameObject particleObject;
 
@@ -21,6 +19,7 @@ public class PBFSimulation : MonoBehaviour
     public float smoothingRadius = 5f;
     public float constraintForce = 0.01f; //used for stability when we calculate lamda
     public int solverIteration = 1; //the number of times we solve the constraint
+    public float deltaTime = 0.016f;
     [SerializeField] private SpawnType spawnType;
 
     private List<GameObject> particlesObjects = new List<GameObject>();
@@ -28,28 +27,30 @@ public class PBFSimulation : MonoBehaviour
     private Vector2 horizontalBoundaries = new Vector2(0, 10);
     private Vector2 verticalBoundaries = new Vector2(0, 10);
 
-    private Vector3[] positions;
-    private Vector3[] predictedPositions;
-    private Vector3[] velocities;
-    private float[] densities;
-    private float[] lamdas;
-    private Vector3[] deltaPs;
+    private NativeArray<Vector3> positions;
+    private NativeArray<Vector3> predictedPositions;
+    private NativeArray<Vector3> velocities;
+    private NativeArray<float> densities;
+    private NativeArray<float> lamdas;
+    private NativeArray<Vector3> deltaPs;
 
     private Vector3 gravityVector;
 
-    private Dictionary<int, List<int>> particleNeighbors = new Dictionary<int, List<int>>();
+    private NativeArray<int> particleNeighbors; //this is a particleNumber * particleNumber array to acces the jth neighbor of ith particle particleNeighbor[i*n+j]
+    private NativeArray<int> neighborCounter;
+    //private NativeHashMap<int, NativeList<int>> particleNeighbors;
 
     enum SpawnType { UNIFORM, RANDOM};
 
     public void Start()
     {
         //particle Data initialization
-        positions = new Vector3[particleNumber];
-        predictedPositions = new Vector3[particleNumber];
-        velocities = new Vector3[particleNumber];
-        densities = new float[particleNumber];
-        lamdas = new float[particleNumber];
-        deltaPs = new Vector3[particleNumber];
+        positions = new NativeArray<Vector3>(particleNumber, Allocator.Persistent);
+        predictedPositions = new NativeArray<Vector3>(particleNumber, Allocator.Persistent);
+        velocities = new NativeArray<Vector3>(particleNumber, Allocator.Persistent);
+        densities = new NativeArray<float>(particleNumber, Allocator.Persistent);
+        lamdas = new NativeArray<float>(particleNumber, Allocator.Persistent);
+        deltaPs = new NativeArray<Vector3>(particleNumber, Allocator.Persistent);
 
         gravityVector = new Vector3(0, gravity, 0);
 
@@ -66,32 +67,37 @@ public class PBFSimulation : MonoBehaviour
             spawnRandomParticles();
 
         //initiallize neighbors
-        for (int i = 0; i < particleNumber; i++)
-        {
-            List<int> neighbors = new List<int>();
-            particleNeighbors.Add(i, neighbors);
-        }
+        particleNeighbors = new NativeArray<int>(particleNumber * particleNumber, Allocator.Persistent);
+        neighborCounter = new NativeArray<int>(particleNumber, Allocator.Persistent);
     }
 
     public void Update()
     {
+        float startTime = Time.realtimeSinceStartup;
         //add external forces
         for(int i = 0; i < particleNumber; i++)
         {
-            velocities[i] += getExternalForce() * Time.deltaTime;
-            predictedPositions[i] = positions[i] + velocities[i] * Time.deltaTime;
+            velocities[i] += getExternalForce() * deltaTime;
+            predictedPositions[i] = positions[i] + velocities[i] * deltaTime;
         }
+        Debug.Log("The time passed for external force calculation " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
         //Find neighbors
+        startTime = Time.realtimeSinceStartup;
         findNeighboors();
+        Debug.Log("The time passed for finding neighboors " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
         //calculate densities
-        for (int i = 0; i < particleNumber; i++)
+        calculateDensities();
+        startTime = Time.realtimeSinceStartup;
+        /*for (int i = 0; i < particleNumber; i++)
         {
             densities[i] = calculateDensity(i);
-        }
+        }*/
+        Debug.Log("The time passed for density calculation " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
-        for(int solveIteration = 0; solveIteration < solverIteration; solveIteration ++ )
+        startTime = Time.realtimeSinceStartup;
+        for (int solveIteration = 0; solveIteration < solverIteration; solveIteration ++ )
         {
             //calculate lamda values
             calculateLamdas();
@@ -102,20 +108,23 @@ public class PBFSimulation : MonoBehaviour
             //update predicted pos by respecting the constrain
             for (int i = 0; i < particleNumber; i++)
             {
-                predictedPositions[i] += deltaPs[i]*Time.deltaTime;
+                predictedPositions[i] += deltaPs[i]* deltaTime;
             }
         }
+        Debug.Log("The time passed for constraint solver " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
         //update position and velocity
         for (int i = 0; i < particleNumber; i++)
         {
-            velocities[i] = (predictedPositions[i] - positions[i]) / Time.deltaTime;
+            velocities[i] = (predictedPositions[i] - positions[i]) / deltaTime;
             positions[i] = predictedPositions[i];
             checkBoundaryConditions(i);
             particlesObjects[i].transform.position = positions[i];
         }
 
         clearNeighbors();
+
+        debugNeighbors(0);
     }
 
     private void spawnParticles()
@@ -165,7 +174,7 @@ public class PBFSimulation : MonoBehaviour
     {
         for(int i = 0; i < particleNumber; i++)
         {
-            positions[i] += velocities[i] * Time.deltaTime;
+            positions[i] += velocities[i] * deltaTime;
             particlesObjects[i].transform.position = positions[i];
 
             checkBoundaryConditions(i);
@@ -185,16 +194,18 @@ public class PBFSimulation : MonoBehaviour
         Vector3 deltaPi = Vector3.zero;
         float dist;
         Vector3 dir;
+        int pj;
 
-        foreach(int j in particleNeighbors[i])
+        for (int j = 0; j < neighborCounter[i]; j++)
         {
-            if (i == j)
+            pj = particleNeighbors[i * particleNumber + j];
+            if (i == pj)
                 continue;
 
-            dist = (predictedPositions[i] - predictedPositions[j]).magnitude;
-            dir = dist == 0 ? getRandomDirection() : (predictedPositions[j] - predictedPositions[i]) / dist;
+            dist = (predictedPositions[i] - predictedPositions[pj]).magnitude;
+            dir = dist == 0 ? getRandomDirection() : (predictedPositions[pj] - predictedPositions[i]) / dist;
 
-            deltaPi += (lamdas[i] + lamdas[j]) * gradientSpikyKernel(dist, smoothingRadius) * dir;
+            deltaPi += (lamdas[i] + lamdas[pj]) * gradientSpikyKernel(dist, smoothingRadius) * dir;
         }
         return deltaPi;
     }
@@ -210,9 +221,11 @@ public class PBFSimulation : MonoBehaviour
     private float calculateLamda(int i)
     {
         float denominator = 0;
+        int k;
 
-        foreach(int k in particleNeighbors[i])
+        for (int j = 0; j < neighborCounter[i]; j++)
         {
+            k = particleNeighbors[i * particleNumber + j];
             denominator += math.pow(math.abs(constraintGradient(i, k)), 2);
         }
 
@@ -230,6 +243,7 @@ public class PBFSimulation : MonoBehaviour
         //of the particle i by the neighbor k
         float partialDeriv = 0;
         float dist;
+        int pj;
 
         if(k != i)
         {
@@ -238,9 +252,10 @@ public class PBFSimulation : MonoBehaviour
         }
         else
         {
-            foreach(int j in particleNeighbors[i])
+            for (int j = 0; j < neighborCounter[i]; j++)
             {
-                dist = (predictedPositions[i] - predictedPositions[j]).magnitude;
+                pj = particleNeighbors[i * particleNumber + j];
+                dist = (predictedPositions[i] - predictedPositions[pj]).magnitude;
                 partialDeriv += gradientSpikyKernel(dist, smoothingRadius);
             }
         }
@@ -248,13 +263,33 @@ public class PBFSimulation : MonoBehaviour
         return partialDeriv / density;
     }
 
+    private void calculateDensities()
+    {
+        // Create and schedule the job
+        CalculateDensityJob job = new CalculateDensityJob
+        {
+            predictedPositions = predictedPositions,
+            particleNeighbors = particleNeighbors, // assuming this is already a NativeArray
+            neighborCounter = neighborCounter,
+            particleMass = particleMass,
+            smoothingRadius = smoothingRadius,
+            densities = densities,
+            particleNumber = particleNumber
+        };
+        JobHandle handle = job.Schedule(particleNumber, particleNumber/9); // Each job has equal number of particle to handle
+
+        // Wait for the job to complete
+        handle.Complete();
+    }
+
     private float calculateDensity(int pi)
     {
         float density = 0;
         float dist;
-
-        foreach(int pj in particleNeighbors[pi])
+        int pj;
+        for(int j = 0; j < neighborCounter[pi]; j++)
         {
+            pj = particleNeighbors[pi * particleNumber + j];
             dist = (predictedPositions[pi] - predictedPositions[pj]).magnitude;  //TO DO dist is supposed to be squared
             density += particleMass * poly6Kernel(dist, smoothingRadius);
         }
@@ -294,24 +329,24 @@ public class PBFSimulation : MonoBehaviour
         //vertical conditions
         if ((positions[pi].y - particleRadius) < verticalBoundaries.x && velocities[pi].y < 0)
         {
-            velocities[pi].y = -velocities[pi].y * collisionDamping;
-            positions[pi].y = verticalBoundaries.x;
+            velocities[pi] = new Vector3(velocities[pi].x, -velocities[pi].y * collisionDamping, velocities[pi].z);
+            positions[pi] = new Vector3(positions[pi].x, verticalBoundaries.x, positions[pi].z);
         }
         if ((positions[pi].y + particleRadius) > verticalBoundaries.y && velocities[pi].y > 0)
         {
-            velocities[pi].y = -velocities[pi].y * collisionDamping;
-            positions[pi].y = verticalBoundaries.y;
+            velocities[pi] = new Vector3(velocities[pi].x, -velocities[pi].y * collisionDamping, velocities[pi].z);
+            positions[pi] = new Vector3(positions[pi].x, verticalBoundaries.y, positions[pi].z);
         }
         //horizontal conditions
         if ((positions[pi].x - particleRadius) < horizontalBoundaries.x && velocities[pi].x < 0)
         {
-            velocities[pi].x = -velocities[pi].x * collisionDamping;
-            positions[pi].x = horizontalBoundaries.x;
+            velocities[pi] = new Vector3(-velocities[pi].x * collisionDamping, velocities[pi].y, velocities[pi].z);
+            positions[pi] = new Vector3(horizontalBoundaries.x, positions[pi].y, positions[pi].z);
         }
         if ((positions[pi].x + particleRadius) > horizontalBoundaries.y && velocities[pi].x > 0)
         {
-            velocities[pi].x = -velocities[pi].x * collisionDamping;
-            positions[pi].x = horizontalBoundaries.y;
+            velocities[pi] = new Vector3(-velocities[pi].x * collisionDamping, velocities[pi].y, velocities[pi].z);
+            positions[pi] = new Vector3(horizontalBoundaries.y, positions[pi].y, positions[pi].z);
         }
     }
 
@@ -323,7 +358,8 @@ public class PBFSimulation : MonoBehaviour
             {
                 if ((predictedPositions[i] - predictedPositions[j]).magnitude < smoothingRadius)
                 {
-                    particleNeighbors[i].Add(j);
+                    particleNeighbors[i*particleNumber + neighborCounter[i]] = j;
+                    neighborCounter[i] += 1;
                 }
             }
         }
@@ -338,8 +374,7 @@ public class PBFSimulation : MonoBehaviour
     {
         for (int i = 0; i < particleNumber; i++)
         {
-            List<int> neighbors = new List<int>();
-            particleNeighbors[i] = neighbors;
+            neighborCounter[i] = 0;
         }
     }
 
@@ -348,11 +383,63 @@ public class PBFSimulation : MonoBehaviour
         return new Vector3(UnityEngine.Random.Range(-1.0f, 1.0f), UnityEngine.Random.Range(-1.0f, 1.0f), 0).normalized;
     }
 
-    private void debugNeighboors(int pi)
+    private void debugNeighbors(int pi)
     {
-        foreach(int i in particleNeighbors[pi])
+        for(int j = 0; j < neighborCounter[pi]; j++)
         {
-            particlesObjects[i].GetComponent<SpriteRenderer>().color = Color.red;
+            int neighborIndex = particleNeighbors[pi * particleNumber + j];
+            particlesObjects[neighborIndex].GetComponent<SpriteRenderer>().color = Color.red;
         }
+    }
+
+    void OnDestroy()
+    {
+        // Dispose NativeArrays to deallocate memory
+        positions.Dispose();
+        velocities.Dispose();
+        lamdas.Dispose();
+        deltaPs.Dispose();
+        densities.Dispose();
+        predictedPositions.Dispose();
+        neighborCounter.Dispose();
+        particleNeighbors.Dispose();
+    }
+}
+
+struct CalculateDensityJob : IJobParallelFor
+{
+    public NativeArray<Vector3> predictedPositions; // NativeArray to store predicted positions
+    public NativeArray<int> particleNeighbors;    
+    public NativeArray<int> neighborCounter;  
+    public float particleMass;
+    public float smoothingRadius;
+    public NativeArray<float> densities;            // NativeArray to store calculated densities
+    public int particleNumber;
+
+    public void Execute(int index)
+    {
+        float density = 0;
+        float dist;
+        Debug.Log("particle neighboor size " + particleNeighbors.Length);
+        // Loop through particle neighbors
+        for (int j = 0; j < particleNeighbors.Length; j++)
+        {
+            int pj = particleNeighbors[j];
+            dist = (predictedPositions[index] - predictedPositions[pj]).sqrMagnitude; // Use sqrMagnitude for squared distance
+            density += particleMass * poly6Kernel(dist, smoothingRadius);
+        }
+
+        // Store the calculated density for this particle
+        densities[index] = density;
+    }
+
+    // Your poly6Kernel function
+    private float poly6Kernel(float r, float h)
+    {
+        if (r >= 0 && r <= h)
+        {
+            return (315 / (64 * math.PI * math.pow(h, 9))) * math.pow(h * h - r * r, 3);
+        }
+        return 0;
     }
 }
