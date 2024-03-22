@@ -250,7 +250,6 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 773940262}
-  - component: {fileID: 773940261}
   - component: {fileID: 773940263}
   m_Layer: 0
   m_Name: Fluid Simulation
@@ -259,32 +258,6 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &773940261
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 773940260}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 03263023569e5c545bbcd100b27d5d74, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  particleObject: {fileID: 7815605973295585089, guid: 98dbef7931cefe94ead96d73055f2a92, type: 3}
-  gravity: 0
-  density: 8
-  particleNumber: 600
-  particleRadius: 0.2
-  particleHorizontalDistance: 1
-  particleVerticalDistance: 0.5
-  smoothingRadius: 5
-  K_temp: 1
-  viscosityCoeff: 0
-  collisionDamping: 0.7
-  horizontalBoundaries: {x: -10, y: 10}
-  verticalBoundaries: {x: -10, y: 10}
-  spawnType: 0
 --- !u!4 &773940262
 Transform:
   m_ObjectHideFlags: 0
@@ -307,13 +280,20 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 773940260}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 315c354955a83614a889a85f6b57b555, type: 3}
+  m_Script: {fileID: 11500000, guid: 6872600003bd83c47bf4d6905c4d7789, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  squareObject: {fileID: 4182834041252200420, guid: a5a46eb5ab329774c96874b0d2b814ef, type: 3}
-  thresh: 0.05
-  width: 20
-  height: 20
-  sphSim: {fileID: 773940261}
+  particleObject: {fileID: 7815605973295585089, guid: 98dbef7931cefe94ead96d73055f2a92, type: 3}
+  particleNumber: 400
+  particleDistances: {x: 0.5, y: 0.5}
+  particleRadius: 0.4
+  collisionDamping: 0.9
+  gravity: -9.8
+  particleMass: 1
+  density: 1
+  smoothingRadius: 5
+  constraintForce: 0.01
+  solverIteration: 1
+  spawnType: 0

@@ -18,7 +18,7 @@ public class SPHSimulation : MonoBehaviour
     public float smoothingRadius = 5; //the radius for the smoothing function
 
     public float K_temp = 1; //coefficient depending on the temperature
-
+    public float viscosityCoeff = 1;
 
     public float collisionDamping = 1;
     public Vector2 horizontalBoundaries = new Vector2(0, 10);
@@ -117,12 +117,16 @@ public class SPHSimulation : MonoBehaviour
 
     private void Update()
     {
-        //predict velocities
+        for(int i = 0; i <particleNumber; i++)
+        {
+            particles[i].velocity += addExternalForces() * Time.deltaTime;
+        }
+
+        //predict positions
         for (int i = 0; i < particleNumber; i++)
         {
             predictedPositions[i] = particles[i].position + particles[i].velocity * Time.deltaTime;
         }
-
         //calculate densities
         for (int i = 0; i < particleNumber; i++)
         {
@@ -177,9 +181,10 @@ public class SPHSimulation : MonoBehaviour
     {
         //the force is calculated as the sum of the forces coming from pressure, viscocity and external forces
         Vector3 appliedForce = Vector3.zero;
+
         appliedForce += addPressurseForce(particleIndex);
         appliedForce += addViscocityForce(particleIndex);
-        appliedForce += addExternalForces();
+        //appliedForce += addExternalForces();
 
         return appliedForce;
     }
@@ -213,6 +218,28 @@ public class SPHSimulation : MonoBehaviour
 
     private Vector3 addViscocityForce(int particleIndex)
     {
+        /*Vector3 f_viscocity = Vector3.zero;
+
+        Particle pi = particles[particleIndex];
+        Particle pj;
+
+        Vector3 dir;
+        float dist;
+
+        for(int j = 0; j < particleNumber; j++)
+        {
+            if (j == particleIndex) continue;
+
+            pj = particles[j];
+
+            dist = (predictedPositions[particleIndex] - predictedPositions[j]).magnitude;
+
+            dir = dist == 0 ? getRandomDirection() : (predictedPositions[j] - predictedPositions[particleIndex]) / dist;
+
+            f_viscocity += pj.mass * ((pj.velocity.magnitude - pi.velocity.magnitude) / densities[j]) * laplaceSpikyKernel(dist, smoothingRadius) *dir;
+        }
+        */
+        //return viscosityCoeff * f_viscocity;
         return Vector3.zero;
     }
 
@@ -265,9 +292,17 @@ public class SPHSimulation : MonoBehaviour
         return 0;
     }
 
+    private float laplaceSpikyKernel(float r, float h)
+    {
+        if(r >= 0 && r <= h)
+        {
+            return (90 / (math.PI * math.pow(h, 6))) * (h - r);
+        }
+        return 0;
+    }
+
     private Vector3 getRandomDirection()
     {
-        Debug.Log("here");
         return new Vector3(UnityEngine.Random.Range(-1.0f, 1.0f), UnityEngine.Random.Range(-1.0f, 1.0f), 0).normalized;
     }
 
