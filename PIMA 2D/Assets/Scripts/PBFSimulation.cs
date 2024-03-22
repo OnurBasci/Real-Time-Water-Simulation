@@ -21,6 +21,7 @@ public class PBFSimulation : MonoBehaviour
     public float smoothingRadius = 5f;
     public float constraintForce = 0.01f; //used for stability when we calculate lamda
     public int solverIteration = 1; //the number of times we solve the constraint
+    public float deltaTime = 1f / 60f;
     [SerializeField] private SpawnType spawnType;
 
     private List<GameObject> particlesObjects = new List<GameObject>();
@@ -76,22 +77,29 @@ public class PBFSimulation : MonoBehaviour
     public void Update()
     {
         //add external forces
-        for(int i = 0; i < particleNumber; i++)
+        float startTime = Time.realtimeSinceStartup;
+        for (int i = 0; i < particleNumber; i++)
         {
-            velocities[i] += getExternalForce() * Time.deltaTime;
-            predictedPositions[i] = positions[i] + velocities[i] * Time.deltaTime;
+            velocities[i] += getExternalForce() * deltaTime;
+            predictedPositions[i] = positions[i] + velocities[i] * deltaTime;
         }
+        Debug.Log("The time passed for external force calculation " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
         //Find neighbors
+        startTime = Time.realtimeSinceStartup;
         findNeighboors();
+        Debug.Log("The time passed for finding neighboors " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
         //calculate densities
+        startTime = Time.realtimeSinceStartup;
         for (int i = 0; i < particleNumber; i++)
         {
             densities[i] = calculateDensity(i);
         }
+        Debug.Log("The time passed for density calculation " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
-        for(int solveIteration = 0; solveIteration < solverIteration; solveIteration ++ )
+        startTime = Time.realtimeSinceStartup;
+        for (int solveIteration = 0; solveIteration < solverIteration; solveIteration ++ )
         {
             //calculate lamda values
             calculateLamdas();
@@ -102,14 +110,15 @@ public class PBFSimulation : MonoBehaviour
             //update predicted pos by respecting the constrain
             for (int i = 0; i < particleNumber; i++)
             {
-                predictedPositions[i] += deltaPs[i]*Time.deltaTime;
+                predictedPositions[i] += deltaPs[i]*deltaTime;
             }
         }
+        Debug.Log("The time passed for constraint solver " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
         //update position and velocity
         for (int i = 0; i < particleNumber; i++)
         {
-            velocities[i] = (predictedPositions[i] - positions[i]) / Time.deltaTime;
+            velocities[i] = (predictedPositions[i] - positions[i]) / deltaTime;
             positions[i] = predictedPositions[i];
             checkBoundaryConditions(i);
             particlesObjects[i].transform.position = positions[i];
@@ -165,7 +174,7 @@ public class PBFSimulation : MonoBehaviour
     {
         for(int i = 0; i < particleNumber; i++)
         {
-            positions[i] += velocities[i] * Time.deltaTime;
+            positions[i] += velocities[i] * deltaTime;
             particlesObjects[i].transform.position = positions[i];
 
             checkBoundaryConditions(i);

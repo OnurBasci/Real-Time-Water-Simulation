@@ -287,7 +287,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   particleObject: {fileID: 7815605973295585089, guid: 98dbef7931cefe94ead96d73055f2a92, type: 3}
-  particleNumber: 400
+  particleNumber: 800
   particleDistances: {x: 1, y: 1}
   particleRadius: 0.5
   collisionDamping: 0.9
@@ -297,6 +297,7 @@ MonoBehaviour:
   smoothingRadius: 5
   constraintForce: 0.01
   solverIteration: 4
+  deltaTime: 0.016666668
   spawnType: 1
 --- !u!114 &773940264
 MonoBehaviour:
@@ -311,7 +312,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   particleObject: {fileID: 7815605973295585089, guid: 98dbef7931cefe94ead96d73055f2a92, type: 3}
-  particleNumber: 800
+  particleNumber: 1000
   particleDistances: {x: 1, y: 1}
   particleRadius: 0.5
   collisionDamping: 0.9
@@ -320,6 +321,6 @@ MonoBehaviour:
   density: 0.6
   smoothingRadius: 5
   constraintForce: 0.01
-  solverIteration: 2
+  solverIteration: 4
   deltaTime: 0.016666668
   spawnType: 1

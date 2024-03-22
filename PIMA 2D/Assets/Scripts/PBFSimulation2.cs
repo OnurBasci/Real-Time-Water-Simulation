@@ -4,6 +4,8 @@ using Unity.Mathematics;
 using Unity.Jobs;
 using Unity.Collections;
 using Unity.VisualScripting;
+using UnityEngine.Animations;
+using MathNet.Numerics.Statistics.Mcmc;
 
 public class PBFSimulation2 : MonoBehaviour
 {
@@ -88,12 +90,12 @@ public class PBFSimulation2 : MonoBehaviour
         Debug.Log("The time passed for finding neighboors " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
         //calculate densities
-        calculateDensities();
         startTime = Time.realtimeSinceStartup;
-        /*for (int i = 0; i < particleNumber; i++)
+        //calculateDensities();
+        for (int i = 0; i < particleNumber; i++)
         {
             densities[i] = calculateDensity(i);
-        }*/
+        }
         Debug.Log("The time passed for density calculation " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
         startTime = Time.realtimeSinceStartup;
@@ -183,10 +185,27 @@ public class PBFSimulation2 : MonoBehaviour
 
     private void calculateDeltaPs()
     {
-        for(int i = 0; i < particleNumber; i++)
+
+        // Create and schedule the job
+        CalculateDeltaPs job = new CalculateDeltaPs
+        {
+            predictedPositions = predictedPositions,
+            particleNeighbors = particleNeighbors, // assuming this is already a NativeArray
+            neighborCounter = neighborCounter,
+            smoothingRadius = smoothingRadius,
+            particleNumber = particleNumber,
+            deltaPs = deltaPs,
+            lamdas = lamdas
+        };
+        JobHandle handle = job.Schedule(particleNumber, particleNumber / 9); // Each job has equal number of particle to handle
+
+        // Wait for the job to complete
+        handle.Complete();
+
+        /*for(int i = 0; i < particleNumber; i++)
         {
             deltaPs[i] = calculateDeltaP(i);
-        }
+        }*/
     }
 
     private Vector3 calculateDeltaP(int i)
@@ -212,10 +231,22 @@ public class PBFSimulation2 : MonoBehaviour
 
     private void calculateLamdas()
     {
-        for(int i = 0; i < particleNumber; i++)
+        CalculateLamdas job = new CalculateLamdas
         {
-            lamdas[i] = calculateLamda(i);
-        }
+            predictedPositions = predictedPositions,
+            particleNeighbors = particleNeighbors, // assuming this is already a NativeArray
+            neighborCounter = neighborCounter,
+            densities = densities,
+            smoothingRadius = smoothingRadius,
+            particleNumber = particleNumber,
+            lamdas = lamdas,
+            density = density,
+            constraintForce = constraintForce
+        };
+        JobHandle handle = job.Schedule(particleNumber, particleNumber / 9); // Each job has equal number of particle to handle
+
+        // Wait for the job to complete
+        handle.Complete();
     }
 
     private float calculateLamda(int i)
@@ -408,19 +439,19 @@ public class PBFSimulation2 : MonoBehaviour
 
 struct CalculateDensityJob : IJobParallelFor
 {
-    public NativeArray<Vector3> predictedPositions; // NativeArray to store predicted positions
-    public NativeArray<int> particleNeighbors;    
-    public NativeArray<int> neighborCounter;  
-    public float particleMass;
-    public float smoothingRadius;
+    [ReadOnly] public NativeArray<Vector3> predictedPositions; // NativeArray to store predicted positions
+    [ReadOnly] public NativeArray<int> particleNeighbors;    
+    [ReadOnly] public NativeArray<int> neighborCounter;  
+    [ReadOnly] public float particleMass;
+    [ReadOnly] public float smoothingRadius;
     public NativeArray<float> densities;            // NativeArray to store calculated densities
-    public int particleNumber;
+    [ReadOnly] public int particleNumber;
 
     public void Execute(int index)
     {
         float density = 0;
         float dist;
-        Debug.Log("particle neighboor size " + particleNeighbors.Length);
+
         // Loop through particle neighbors
         for (int j = 0; j < particleNeighbors.Length; j++)
         {
@@ -439,6 +470,118 @@ struct CalculateDensityJob : IJobParallelFor
         if (r >= 0 && r <= h)
         {
             return (315 / (64 * math.PI * math.pow(h, 9))) * math.pow(h * h - r * r, 3);
+        }
+        return 0;
+    }
+}
+
+struct CalculateDeltaPs : IJobParallelFor
+{
+    [ReadOnly] public NativeArray<Vector3> predictedPositions; // NativeArray to store predicted positions
+    [ReadOnly] public NativeArray<int> particleNeighbors;
+    [ReadOnly] public NativeArray<int> neighborCounter;
+    [ReadOnly] public float smoothingRadius;
+    [ReadOnly] public int particleNumber;
+    public NativeArray<Vector3> deltaPs;
+    [ReadOnly] public NativeArray<float> lamdas;
+
+    public void Execute(int index)
+    {
+        Vector3 deltaPi = Vector3.zero;
+        float dist;
+        Vector3 dir;
+        int pj;
+
+        for (int j = 0; j < neighborCounter[index]; j++)
+        {
+            pj = particleNeighbors[index * particleNumber + j];
+            if (index == pj)
+                continue;
+
+            dist = (predictedPositions[index] - predictedPositions[pj]).magnitude;
+            dir = dist == 0 ? getRandomDirection() : (predictedPositions[pj] - predictedPositions[index]) / dist;
+
+            deltaPi += (lamdas[index] + lamdas[pj]) * gradientSpikyKernel(dist, smoothingRadius) * dir;
+        }
+        deltaPs[index] = deltaPi;
+    }
+
+    private Vector3 getRandomDirection()
+    {
+        return new Vector3(0,1,0).normalized;
+    }
+    private float gradientSpikyKernel(float r, float h)
+    {
+        if (r >= 0 && r <= h)
+        {
+            return -(45 / (math.PI * math.pow(h, 6))) * math.pow(h - r, 2);
+        }
+        return 0;
+    }
+}
+
+struct CalculateLamdas : IJobParallelFor
+{
+    [ReadOnly] public NativeArray<Vector3> predictedPositions; // NativeArray to store predicted positions
+    [ReadOnly] public NativeArray<int> particleNeighbors;
+    [ReadOnly] public NativeArray<int> neighborCounter;
+    [ReadOnly] public NativeArray<float> densities;
+    [ReadOnly] public float smoothingRadius;
+    [ReadOnly] public int particleNumber;
+    public NativeArray<float> lamdas;
+    public float density;
+    public float constraintForce;
+
+    public void Execute(int index)
+    {
+        float denominator = 0;
+        int k;
+
+        for (int j = 0; j < neighborCounter[index]; j++)
+        {
+            k = particleNeighbors[index * particleNumber + j];
+            denominator += math.pow(math.abs(constraintGradient(index, k)), 2);
+        }
+
+        lamdas[index] = -constraintFunction(index) / (denominator + constraintForce);
+    }
+
+    private float constraintFunction(int i)
+    {
+        return (densities[i] / density) - 1;
+    }
+
+    private float constraintGradient(int i, int k)
+    {
+        //this function is tocalculate the gradient of the constraint function
+        //of the particle i by the neighbor k
+        float partialDeriv = 0;
+        float dist;
+        int pj;
+
+        if (k != i)
+        {
+            dist = (predictedPositions[i] - predictedPositions[k]).magnitude;
+            partialDeriv = -gradientSpikyKernel(dist, smoothingRadius);
+        }
+        else
+        {
+            for (int j = 0; j < neighborCounter[i]; j++)
+            {
+                pj = particleNeighbors[i * particleNumber + j];
+                dist = (predictedPositions[i] - predictedPositions[pj]).magnitude;
+                partialDeriv += gradientSpikyKernel(dist, smoothingRadius);
+            }
+        }
+
+        return partialDeriv / density;
+    }
+
+    private float gradientSpikyKernel(float r, float h)
+    {
+        if (r >= 0 && r <= h)
+        {
+            return -(45 / (math.PI * math.pow(h, 6))) * math.pow(h - r, 2);
         }
         return 0;
     }
