@@ -30,6 +30,8 @@ public class GridManager : MonoBehaviour
 
     private List<GameObject> particlesObjects = new List<GameObject>();
 
+    public delegate void MyFunction(int particleIndex);
+
     public void Start()
     {
         positions = new Vector2[particleNumber];
@@ -55,13 +57,15 @@ public class GridManager : MonoBehaviour
 
     public void Update()
     {
+        reinitializeParticles();
+
         UpdateSpatialLookUp(positions, circleRadius);
 
         //get the mouse world position
         Vector3 mousePosition = Input.mousePosition;
         Vector3 worldPosition = Camera.main.ScreenToWorldPoint(new Vector3(mousePosition.x, mousePosition.y, 1));
 
-        findNeighborPoints(worldPosition);
+        findNeighborPointsFromPosition(worldPosition, setParticleColorToRed);
     }
 
     void OnDrawGizmos()
@@ -105,8 +109,13 @@ public class GridManager : MonoBehaviour
         }
     }
 
-    //this is a tes function that find the neigbor positions and change their colors
-    public void findNeighborPoints(Vector2 samplePoint)
+    public void findNeighbors(Vector2[] positions, float radius)
+    {
+        UpdateSpatialLookUp(positions, radius);
+    }
+
+    //this is a tes function that find the neigbor positions and change their colors. A delegetefunction is given to execute if the neighbors are found
+    public void findNeighborPointsFromPosition(Vector2 samplePoint, MyFunction callBackFunction)
     {
         (int centerX, int centerY) = PositionToCellCoord(samplePoint, circleRadius);
 
@@ -115,7 +124,6 @@ public class GridManager : MonoBehaviour
         {
             //get the neighbor cells key
             (int cellIndexX, int cellIndexY) = PositionToCellCoord(new Vector2(samplePoint.x + offsetX, samplePoint.y + offsetY), circleRadius);
-            Debug.Log((cellIndexX, cellIndexY));
             uint key = getKeyFromHash(HashCell(cellIndexX, cellIndexY), particleNumber);
             int cellStartIndex = startIndices[key];
 
@@ -128,10 +136,18 @@ public class GridManager : MonoBehaviour
                 float dist = (positions[particleIndex] - samplePoint).magnitude;
 
                 //check if the position is inside the radius
-                
-                particlesObjects[(int)particleIndex].GetComponent<SpriteRenderer>().color = Color.red;
+                if(dist < circleRadius)
+                {
+                    //call the function to execute if the particle is a neighbor
+                    callBackFunction((int)particleIndex);
+                }
+                //particlesObjects[(int)particleIndex].GetComponent<SpriteRenderer>().color = Color.red;
             }
         }
+    }
+    public void setParticleColorToRed(int i)
+    {
+        particlesObjects[i].GetComponent<SpriteRenderer>().color = Color.red;
     }
 
     //this function stocks the cell position for all points
@@ -187,6 +203,15 @@ public class GridManager : MonoBehaviour
     public uint getKeyFromHash(uint hash, int pointCount)
     {
         return hash % (uint)pointCount; 
+    }
+
+    //this function puts all of the particle colors to blue
+    public void reinitializeParticles()
+    {
+        for(int i = 0; i < particleNumber; i ++)
+        {
+            particlesObjects[i].GetComponent<SpriteRenderer>().color = Color.blue;
+        }
     }
 
 }
