@@ -298,7 +298,10 @@ MonoBehaviour:
   constraintForce: 0.1
   solverIteration: 4
   deltaTime: 0.016666668
-  spawnType: 0
+  spawnType: 1
+  k: 0.1
+  deltaq: 0.3
+  activateTensileInstability: 1
 --- !u!114 &773940264
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -312,7 +315,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   particleObject: {fileID: 7815605973295585089, guid: 98dbef7931cefe94ead96d73055f2a92, type: 3}
-  particleNumber: 800
+  particleNumber: 600
   particleDistances: {x: 1, y: 1}
   particleRadius: 0.5
   collisionDamping: 0.9
@@ -323,4 +326,8 @@ MonoBehaviour:
   constraintForce: 0.1
   solverIteration: 4
   deltaTime: 0.016666668
-  spawnType: 0
+  spawnType: 1
+  FindNeighborsWithGrid: 0
+  k: 0.1
+  deltaq: 0.3
+  activateSurfaceTension: 1

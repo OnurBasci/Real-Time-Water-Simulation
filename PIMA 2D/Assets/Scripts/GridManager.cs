@@ -2,47 +2,37 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net;
+using Unity.Collections;
 using UnityEngine;
 using UnityEngine.Experimental.GlobalIllumination;
 
-public class GridManager : MonoBehaviour
+public class GridManager
 {
-    //This class proposes a Grid structure to structurize particle Positions. It contains some methode to draw and test the Grid. And also Useful
-    //methods to analyze particles more efficiently
+    //This class proposes a Grid structure to structurize particle Positions. This methode is usable from other classes
 
-    public GameObject particleObject;
     public float particleRadius = 0.5f;
 
     public int particleNumber = 200;
-    public Vector2 cellNumber = Vector2.one;
-    public Vector2 startPos = Vector2.zero;
-    public float cellSize = 2;
-    public float circleRadius = 2;
+    public float circleRadius;
 
     private List<(uint,uint)> spatialLookUp = new List<(uint, uint)>(); //first value = pos index second = hashval
     private int[] startIndices;
-    private Vector2[] positions;
-
-    private Vector2 horizontalBoundaries = new Vector2(0, 10);
-    private Vector2 verticalBoundaries = new Vector2(0, 10);
+    private Vector3[] positions;
 
     private List<(float, float)> cellOffsets = new List<(float, float)>();
 
-    private List<GameObject> particlesObjects = new List<GameObject>();
-
     public delegate void MyFunction(int particleIndex);
+    public delegate void MyFunction2(int particleIndex, int neighborIndex);
 
-    public void Start()
+    public GridManager(Vector3[] positions, int particleNumber, float circleRadius)
     {
-        positions = new Vector2[particleNumber];
+        Debug.Log(circleRadius);
+        this.positions = positions;
+        this.particleNumber = particleNumber;
+        this.circleRadius = circleRadius;
+
         startIndices = new int[particleNumber];
 
-        //set the boundaries as camera boundaries
-        Vector3 cameraCenter = Camera.main.transform.position;
-        float halfHeight = Camera.main.orthographicSize;
-        float halfWidth = Camera.main.aspect * halfHeight;
-        verticalBoundaries = new Vector2(cameraCenter.y - halfHeight, cameraCenter.y + halfHeight);
-        horizontalBoundaries = new Vector2(cameraCenter.x - halfWidth, cameraCenter.x + halfWidth);
 
         for (int i = -1; i < 2; i++)
         {
@@ -51,73 +41,51 @@ public class GridManager : MonoBehaviour
                 cellOffsets.Add((i * circleRadius, j * circleRadius));
             }
         }
-
-        spawnRandomParticles();
     }
 
-    public void Update()
+    public void findNeighbors(MyFunction2 callBackFunction)
     {
-        reinitializeParticles();
-
-        UpdateSpatialLookUp(positions, circleRadius);
-
-        //get the mouse world position
-        Vector3 mousePosition = Input.mousePosition;
-        Vector3 worldPosition = Camera.main.ScreenToWorldPoint(new Vector3(mousePosition.x, mousePosition.y, 1));
-
-        findNeighborPointsFromPosition(worldPosition, setParticleColorToRed);
-    }
-
-    void OnDrawGizmos()
-    {
-        drawGrid();
-
-        Vector3 mousePosition = Input.mousePosition;  
-        Vector3 worldPosition = Camera.main.ScreenToWorldPoint(new Vector3(mousePosition.x, mousePosition.y, 1));
-        Gizmos.DrawSphere(worldPosition, circleRadius);
-    }
-
-    private void drawGrid()
-    {
-        Vector3 verticalUp, center, horizontalRight;
-        for(int i = 0; i < cellNumber.x; i ++)
+        //This methods search adjacent neighbors of each position and apply the callbackfunctio if the neigbor is in the radius
+        UpdateSpatialLookUp();
+        
+        for(int i = 0; i < particleNumber; i ++)
         {
-            for(int j = 0; j < cellNumber.y; j ++)
-            {
-                center = new Vector2(i * cellSize, j * cellSize);
-                verticalUp = new Vector3(center.x, center.y + cellSize);
-                horizontalRight = new Vector3(center.x + cellSize, center.y);
+            findNeighborPointsFromIndex(i, callBackFunction);
+        }
+    }
 
-                Gizmos.DrawLine(center, verticalUp);
-                Gizmos.DrawLine(center, horizontalRight);
+    //this is a tes function that find the neigbor positions and update neighbors. A delegetefunction is given to execute if the neighbors are found
+    public void findNeighborPointsFromIndex(int particleIndex, MyFunction2 callBackFunction)
+    {
+        Vector3 pointPos = positions[particleIndex];
+        //loop over all neighbor cells
+        foreach ((float offsetX, float offsetY) in cellOffsets)
+        {
+            //get the neighbor cells key
+            (int cellIndexX, int cellIndexY) = PositionToCellCoord(new Vector2(pointPos.x + offsetX, pointPos.y + offsetY), circleRadius);
+            uint key = getKeyFromHash(HashCell(cellIndexX, cellIndexY), particleNumber);
+            int cellStartIndex = startIndices[key];
+
+            for (int i = cellStartIndex; i < spatialLookUp.Count; i++)
+            {
+                //exit the loop if we are no longer looking at the correct cell
+                if (spatialLookUp[i].Item2 != key) break;
+
+                uint neighborIndex = spatialLookUp[i].Item1;
+                float dist = (positions[(int)neighborIndex] - pointPos).magnitude;
+                //check if the position is inside the radius
+                if (dist < circleRadius)
+                {
+                    //call the function to execute if the particle is a neighbor
+                    callBackFunction(particleIndex, (int)neighborIndex);
+                }
             }
         }
     }
 
-    public void spawnRandomParticles()
-    {
-        Vector2 randomSpawnPos;
-        for (int i = 0; i < particleNumber; i++)
-        {
-
-            randomSpawnPos = new Vector3(UnityEngine.Random.Range(horizontalBoundaries.x, horizontalBoundaries.y), UnityEngine.Random.Range(verticalBoundaries.x, verticalBoundaries.y));
-            GameObject p1 = Instantiate(particleObject, randomSpawnPos, Quaternion.identity);
-            p1.transform.localScale = new Vector3(particleRadius * 2, particleRadius * 2, particleRadius * 2);
-
-            particlesObjects.Add(p1);
-            positions[i] = randomSpawnPos;
-        }
-    }
-
-    public void findNeighbors(Vector2[] positions, float radius)
-    {
-        UpdateSpatialLookUp(positions, radius);
-    }
-
     //this is a tes function that find the neigbor positions and change their colors. A delegetefunction is given to execute if the neighbors are found
-    public void findNeighborPointsFromPosition(Vector2 samplePoint, MyFunction callBackFunction)
+    public void findNeighborPointsFromPosition(Vector3 samplePoint, MyFunction callBackFunction)
     {
-        (int centerX, int centerY) = PositionToCellCoord(samplePoint, circleRadius);
 
         //loop over all neighbor cells
         foreach((float offsetX, float offsetY) in cellOffsets)
@@ -133,32 +101,28 @@ public class GridManager : MonoBehaviour
                 if (spatialLookUp[i].Item2 != key) break;
              
                 uint particleIndex = spatialLookUp[i].Item1;
-                float dist = (positions[particleIndex] - samplePoint).magnitude;
-
+                float dist = (positions[(int)particleIndex] - samplePoint).magnitude;
+                Debug.Log(particleIndex);
                 //check if the position is inside the radius
                 if(dist < circleRadius)
                 {
                     //call the function to execute if the particle is a neighbor
-                    callBackFunction((int)particleIndex);
+
                 }
-                //particlesObjects[(int)particleIndex].GetComponent<SpriteRenderer>().color = Color.red;
+                callBackFunction((int)particleIndex);
             }
         }
     }
-    public void setParticleColorToRed(int i)
-    {
-        particlesObjects[i].GetComponent<SpriteRenderer>().color = Color.red;
-    }
 
     //this function stocks the cell position for all points
-    public void UpdateSpatialLookUp(Vector2[] points, float radius)
+    public void UpdateSpatialLookUp()
     {
         spatialLookUp.Clear();
 
-        for(uint i = 0; i < points.Length; i++)
+        for(uint i = 0; i < positions.Length; i++)
         {
-            (int cellX, int cellY) = PositionToCellCoord(points[i], radius);
-            uint cellKey = getKeyFromHash(HashCell(cellX, cellY), points.Length);
+            (int cellX, int cellY) = PositionToCellCoord(positions[i], circleRadius);
+            uint cellKey = getKeyFromHash(HashCell(cellX, cellY), positions.Length);
             spatialLookUp.Add((i, cellKey));
             startIndices[i] = 0;
         }
@@ -167,7 +131,7 @@ public class GridManager : MonoBehaviour
         spatialLookUp = spatialLookUp.OrderBy(pair => pair.Item2).ToList();
 
         //Calculate the start indices of each unique cell key in the spatial lookup
-        for(int i = 0; i < points.Length; i ++)
+        for(int i = 0; i < positions.Length; i ++)
         {
             uint key = spatialLookUp[i].Item2;
             uint keyPrev = i == 0 ? uint.MaxValue : spatialLookUp[i - 1].Item2;
@@ -205,13 +169,15 @@ public class GridManager : MonoBehaviour
         return hash % (uint)pointCount; 
     }
 
-    //this function puts all of the particle colors to blue
-    public void reinitializeParticles()
+    public void updatePositions(NativeArray<Vector3> pos)
     {
         for(int i = 0; i < particleNumber; i ++)
         {
-            particlesObjects[i].GetComponent<SpriteRenderer>().color = Color.blue;
+            positions[i] = pos[i];
         }
     }
-
+    public void updatePositions(Vector3[] pos)
+    {
+        positions = pos;
+    }
 }

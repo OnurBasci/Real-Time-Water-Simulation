@@ -9,6 +9,8 @@ using MathNet.Numerics.Statistics.Mcmc;
 
 public class PBFSimulation2 : MonoBehaviour
 {
+    //this class is for position based Simulation. Basicly it is the same as PBFSimulation but it is optimized with Unitys job system
+
     public GameObject particleObject;
 
     public int particleNumber;
@@ -23,6 +25,11 @@ public class PBFSimulation2 : MonoBehaviour
     public int solverIteration = 1; //the number of times we solve the constraint
     public float deltaTime = 0.016f;
     [SerializeField] private SpawnType spawnType;
+    public bool FindNeighborsWithGrid = true;
+    //tension stability coefficients
+    public float k = 0.1f; //a small positif coefficient
+    public float deltaq = 0.1f;
+    public bool activateSurfaceTension = false;
 
     private List<GameObject> particlesObjects = new List<GameObject>();
 
@@ -40,7 +47,8 @@ public class PBFSimulation2 : MonoBehaviour
 
     private NativeArray<int> particleNeighbors; //this is a particleNumber * particleNumber array to acces the jth neighbor of ith particle particleNeighbor[i*n+j]
     private NativeArray<int> neighborCounter;
-    //private NativeHashMap<int, NativeList<int>> particleNeighbors;
+
+    private GridManager gridManager;
 
     enum SpawnType { UNIFORM, RANDOM};
 
@@ -55,6 +63,8 @@ public class PBFSimulation2 : MonoBehaviour
         deltaPs = new NativeArray<Vector3>(particleNumber, Allocator.Persistent);
 
         gravityVector = new Vector3(0, gravity, 0);
+
+        deltaq *= smoothingRadius;
 
         //set the boundaries as camera boundaries
         Vector3 cameraCenter = Camera.main.transform.position;
@@ -71,22 +81,27 @@ public class PBFSimulation2 : MonoBehaviour
         //initiallize neighbors
         particleNeighbors = new NativeArray<int>(particleNumber * particleNumber, Allocator.Persistent);
         neighborCounter = new NativeArray<int>(particleNumber, Allocator.Persistent);
+
+        gridManager = new GridManager(new Vector3[particleNumber], particleNumber, smoothingRadius);
     }
 
     public void Update()
     {
         float startTime = Time.realtimeSinceStartup;
         //add external forces
-        for(int i = 0; i < particleNumber; i++)
-        {
-            velocities[i] += getExternalForce() * deltaTime;
-            predictedPositions[i] = positions[i] + velocities[i] * deltaTime;
-        }
+        addExternalForces();
         Debug.Log("The time passed for external force calculation " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
         //Find neighbors
         startTime = Time.realtimeSinceStartup;
-        findNeighboors();
+        if(FindNeighborsWithGrid)
+        {
+            findNeighborsOptimized();
+        }
+        else
+        {
+            findNeighbors();
+        }
         Debug.Log("The time passed for finding neighboors " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
         //calculate densities
@@ -172,15 +187,65 @@ public class PBFSimulation2 : MonoBehaviour
         }
     }
 
-    public void moveParticle()
+    private void addExternalForces()
     {
-        for(int i = 0; i < particleNumber; i++)
+        //add gravity
+        for (int i = 0; i < particleNumber; i++)
         {
-            positions[i] += velocities[i] * deltaTime;
-            particlesObjects[i].transform.position = positions[i];
-
-            checkBoundaryConditions(i);
+            velocities[i] += getExternalForce() * deltaTime;
         }
+
+        //add mouse interaction
+        if(Input.GetMouseButton(0))
+        {
+            for(int i = 0; i < particleNumber; i++)
+            {
+                //get the mouse world position
+                Vector3 mousePosition = Input.mousePosition;
+                Vector3 worldPosition = Camera.main.ScreenToWorldPoint(new Vector3(mousePosition.x, mousePosition.y, 1));
+
+                Vector3 interForce = InteractionForce(worldPosition, 15, 50, i) ;
+
+                velocities[i] += new Vector3(interForce.x, interForce.y) * deltaTime;
+            }
+        }
+        else if(Input.GetMouseButton(1))
+        {
+            for (int i = 0; i < particleNumber; i++)
+            {
+                //get the mouse world position
+                Vector3 mousePosition = Input.mousePosition;
+                Vector3 worldPosition = Camera.main.ScreenToWorldPoint(new Vector3(mousePosition.x, mousePosition.y, 1));
+
+                Vector3 interForce = InteractionForce(worldPosition, 15, 50, i);
+
+                velocities[i] -= new Vector3(interForce.x, interForce.y) * deltaTime;
+            }
+        }
+
+        for (int i = 0; i < particleNumber; i++)
+        {
+            predictedPositions[i] = positions[i] + velocities[i] * deltaTime;
+        }
+    }
+    private Vector3 InteractionForce(Vector3 inputPos, float radius, float strenght, int particleIndex)
+    {
+        //this function calculates the force applied to a particle to a specific position
+        Vector3 interactionForce = Vector2.zero;
+        Vector3 offset = inputPos - predictedPositions[particleIndex];
+        float sqrDst = Vector2.Dot(offset, offset);
+
+        if(sqrDst < radius * radius)
+        {
+            float dst = math.sqrt(sqrDst);
+            Vector3 dirToInputPoint = dst <= float.Epsilon ? Vector2.zero : offset / dst;
+
+            float centerT = 1 - dst / radius;
+
+            interactionForce += (dirToInputPoint * strenght - velocities[particleIndex]) * centerT;
+        }
+
+        return interactionForce;
     }
 
     private void calculateDeltaPs()
@@ -195,9 +260,12 @@ public class PBFSimulation2 : MonoBehaviour
             smoothingRadius = smoothingRadius,
             particleNumber = particleNumber,
             deltaPs = deltaPs,
-            lamdas = lamdas
+            lamdas = lamdas,
+            activateSurfaceTension = activateSurfaceTension,
+            deltaq = deltaq,
+            k = k,
         };
-        JobHandle handle = job.Schedule(particleNumber, particleNumber / 9); // Each job has equal number of particle to handle
+        JobHandle handle = job.Schedule(particleNumber, 32); // Each job has equal number of particle to handle
 
         // Wait for the job to complete
         handle.Complete();
@@ -241,9 +309,9 @@ public class PBFSimulation2 : MonoBehaviour
             particleNumber = particleNumber,
             lamdas = lamdas,
             density = density,
-            constraintForce = constraintForce
+            constraintForce = constraintForce,
         };
-        JobHandle handle = job.Schedule(particleNumber, particleNumber / 9); // Each job has equal number of particle to handle
+        JobHandle handle = job.Schedule(particleNumber, 32); // Each job has equal number of particle to handle
 
         // Wait for the job to complete
         handle.Complete();
@@ -381,7 +449,7 @@ public class PBFSimulation2 : MonoBehaviour
         }
     }
 
-    private void findNeighboors()
+    private void findNeighbors()
     {
         for(int i = 0; i < particleNumber; i++)
         {
@@ -394,6 +462,17 @@ public class PBFSimulation2 : MonoBehaviour
                 }
             }
         }
+    }
+
+    private void findNeighborsOptimized()
+    {
+        gridManager.updatePositions(predictedPositions.ToArray());
+        gridManager.findNeighbors(updateNeighbors);
+    }
+    private void updateNeighbors(int i, int j)
+    {
+        particleNeighbors[i * particleNumber + neighborCounter[i]] = j;
+        neighborCounter[i] += 1;
     }
 
     private Vector3 getExternalForce()
@@ -484,6 +563,9 @@ struct CalculateDeltaPs : IJobParallelFor
     [ReadOnly] public int particleNumber;
     public NativeArray<Vector3> deltaPs;
     [ReadOnly] public NativeArray<float> lamdas;
+    [ReadOnly] public bool activateSurfaceTension;
+    [ReadOnly] public float k;
+    [ReadOnly] public float deltaq;
 
     public void Execute(int index)
     {
@@ -491,6 +573,7 @@ struct CalculateDeltaPs : IJobParallelFor
         float dist;
         Vector3 dir;
         int pj;
+        float Scorr = 0; //For Tensile Instability
 
         for (int j = 0; j < neighborCounter[index]; j++)
         {
@@ -501,7 +584,13 @@ struct CalculateDeltaPs : IJobParallelFor
             dist = (predictedPositions[index] - predictedPositions[pj]).magnitude;
             dir = dist == 0 ? getRandomDirection() : (predictedPositions[pj] - predictedPositions[index]) / dist;
 
-            deltaPi += (lamdas[index] + lamdas[pj]) * gradientSpikyKernel(dist, smoothingRadius) * dir;
+            if (activateSurfaceTension)
+            {
+                Scorr = -k * math.pow(poly6Kernel(dist, smoothingRadius) / poly6Kernel(deltaq, smoothingRadius), 4);
+                //Debug.Log("Scorr is " + Scorr);
+            }
+
+            deltaPi += (lamdas[index] + lamdas[pj] + Scorr) * gradientSpikyKernel(dist, smoothingRadius) * dir;
         }
         deltaPs[index] = deltaPi;
     }
@@ -515,6 +604,15 @@ struct CalculateDeltaPs : IJobParallelFor
         if (r >= 0 && r <= h)
         {
             return -(45 / (math.PI * math.pow(h, 6))) * math.pow(h - r, 2);
+        }
+        return 0;
+    }
+
+    private float poly6Kernel(float r, float h)
+    {
+        if (r >= 0 && r <= h)
+        {
+            return (315 / (64 * math.PI * math.pow(h, 9))) * math.pow(h * h - r * r, 3);
         }
         return 0;
     }

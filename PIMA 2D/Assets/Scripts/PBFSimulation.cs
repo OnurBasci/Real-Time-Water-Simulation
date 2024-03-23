@@ -9,6 +9,8 @@ using System;
 
 public class PBFSimulation : MonoBehaviour
 {
+    //this class is for position based Simulation.
+
     public GameObject particleObject;
 
     public int particleNumber;
@@ -23,6 +25,10 @@ public class PBFSimulation : MonoBehaviour
     public int solverIteration = 1; //the number of times we solve the constraint
     public float deltaTime = 1f / 60f;
     [SerializeField] private SpawnType spawnType;
+    //tension stability coefficients
+    public float k = 0.1f; //a small positif coefficient
+    public float deltaq = 0.1f;
+    public bool activateTensileInstability = false;
 
     private List<GameObject> particlesObjects = new List<GameObject>();
 
@@ -53,6 +59,8 @@ public class PBFSimulation : MonoBehaviour
         deltaPs = new Vector3[particleNumber];
 
         gravityVector = new Vector3(0, gravity, 0);
+
+        deltaq *= smoothingRadius;
 
         //set the boundaries as camera boundaries
         Vector3 cameraCenter = Camera.main.transform.position;
@@ -194,6 +202,7 @@ public class PBFSimulation : MonoBehaviour
         Vector3 deltaPi = Vector3.zero;
         float dist;
         Vector3 dir;
+        float Scorr = 0; //For Tensile Instability
 
         foreach(int j in particleNeighbors[i])
         {
@@ -203,7 +212,13 @@ public class PBFSimulation : MonoBehaviour
             dist = (predictedPositions[i] - predictedPositions[j]).magnitude;
             dir = dist == 0 ? getRandomDirection() : (predictedPositions[j] - predictedPositions[i]) / dist;
 
-            deltaPi += (lamdas[i] + lamdas[j]) * gradientSpikyKernel(dist, smoothingRadius) * dir;
+            if(activateTensileInstability)
+            {
+                Scorr = -k * math.pow(poly6Kernel(dist, smoothingRadius) / poly6Kernel(deltaq, smoothingRadius), 4);
+                //Debug.Log("Scorr is " + Scorr);
+            }
+
+            deltaPi += (lamdas[i] + lamdas[j] + Scorr) * gradientSpikyKernel(dist, smoothingRadius) * dir;
         }
         return deltaPi;
     }
