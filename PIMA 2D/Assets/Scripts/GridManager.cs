@@ -102,7 +102,7 @@ public class GridManager
              
                 uint particleIndex = spatialLookUp[i].Item1;
                 float dist = (positions[(int)particleIndex] - samplePoint).magnitude;
-                Debug.Log(particleIndex);
+
                 //check if the position is inside the radius
                 if(dist < circleRadius)
                 {
@@ -159,8 +159,8 @@ public class GridManager
     public uint HashCell(int cellX, int cellY)
     {
         //we choose 2 arbitrary prime numbers
-        uint a = (uint)cellX * 262501;
-        uint b = (uint)cellY * 457393;
+        uint a = (uint)cellX * 704999;
+        uint b = (uint)cellY * 503969;
         return a + b;
     }
 
