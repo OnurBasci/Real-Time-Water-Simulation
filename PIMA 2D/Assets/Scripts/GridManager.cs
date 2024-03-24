@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using Unity.Collections;
+using UnityEditor.Rendering;
 using UnityEngine;
 using UnityEngine.Experimental.GlobalIllumination;
 
@@ -26,7 +27,6 @@ public class GridManager
 
     public GridManager(Vector3[] positions, int particleNumber, float circleRadius)
     {
-        Debug.Log(circleRadius);
         this.positions = positions;
         this.particleNumber = particleNumber;
         this.circleRadius = circleRadius;
@@ -57,14 +57,26 @@ public class GridManager
     //this is a tes function that find the neigbor positions and update neighbors. A delegetefunction is given to execute if the neighbors are found
     public void findNeighborPointsFromIndex(int particleIndex, MyFunction2 callBackFunction)
     {
+        uint[] discoveredCellKeys = new uint[9];
+        int cellCounter = 0;
         Vector3 pointPos = positions[particleIndex];
         //loop over all neighbor cells
         foreach ((float offsetX, float offsetY) in cellOffsets)
         {
             //get the neighbor cells key
             (int cellIndexX, int cellIndexY) = PositionToCellCoord(new Vector2(pointPos.x + offsetX, pointPos.y + offsetY), circleRadius);
+            uint hashVal = HashCell(cellIndexX, cellIndexY);
             uint key = getKeyFromHash(HashCell(cellIndexX, cellIndexY), particleNumber);
             int cellStartIndex = startIndices[key];
+
+            //check if the cell is updated in the updat spatial look up
+            if (cellStartIndex == -1) continue;
+            
+            //check if we already added neighbors from the coresponding cell key this may happen if the hash function gives the same value
+            if(discoveredCellKeys.Contains(key))
+                continue;
+            discoveredCellKeys[cellCounter] = key;
+            cellCounter++;
 
             for (int i = cellStartIndex; i < spatialLookUp.Count; i++)
             {
@@ -124,8 +136,8 @@ public class GridManager
             (int cellX, int cellY) = PositionToCellCoord(positions[i], circleRadius);
             uint cellKey = getKeyFromHash(HashCell(cellX, cellY), positions.Length);
             spatialLookUp.Add((i, cellKey));
-            startIndices[i] = 0;
-        }
+            startIndices[i] = -1; //-1 if there is no particle in a corresponding cellkey
+;       }
 
         //Sort by the cellKey
         spatialLookUp = spatialLookUp.OrderBy(pair => pair.Item2).ToList();
@@ -133,6 +145,7 @@ public class GridManager
         //Calculate the start indices of each unique cell key in the spatial lookup
         for(int i = 0; i < positions.Length; i ++)
         {
+            //check if the adjacent keys are the same
             uint key = spatialLookUp[i].Item2;
             uint keyPrev = i == 0 ? uint.MaxValue : spatialLookUp[i - 1].Item2;
             if(key != keyPrev)
@@ -141,10 +154,10 @@ public class GridManager
             }
         }
 
-        /*
+        
         Debug.Log("spatial lookup array: " + string.Join(", ", spatialLookUp));
         Debug.Log("startIndices array: " + string.Join(", ", startIndices));
-        */
+        
     }
 
     //Convert a position to the coordinate of the corresponding cell
@@ -159,23 +172,16 @@ public class GridManager
     public uint HashCell(int cellX, int cellY)
     {
         //we choose 2 arbitrary prime numbers
-        uint a = (uint)cellX * 704999;
-        uint b = (uint)cellY * 503969;
+        uint a = (uint)cellX * 7865489;
+        uint b = (uint)cellY * 5624249;
         return a + b;
     }
 
     public uint getKeyFromHash(uint hash, int pointCount)
     {
-        return hash % (uint)pointCount; 
+        return hash % (uint)pointCount; //division factor should be big to avoid same keys 
     }
 
-    public void updatePositions(NativeArray<Vector3> pos)
-    {
-        for(int i = 0; i < particleNumber; i ++)
-        {
-            positions[i] = pos[i];
-        }
-    }
     public void updatePositions(Vector3[] pos)
     {
         positions = pos;

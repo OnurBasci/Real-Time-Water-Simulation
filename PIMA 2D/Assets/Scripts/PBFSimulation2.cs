@@ -13,6 +13,7 @@ public class PBFSimulation2 : MonoBehaviour
 
     public GameObject particleObject;
 
+    public int debugParticleIndex = 1;
     public int particleNumber;
     public Vector2 particleDistances = new Vector2(1,1);
     public float particleRadius = 1f;
@@ -94,7 +95,7 @@ public class PBFSimulation2 : MonoBehaviour
 
         //Find neighbors
         startTime = Time.realtimeSinceStartup;
-        if(FindNeighborsWithGrid)
+        if (FindNeighborsWithGrid)
         {
             findNeighborsOptimized();
         }
@@ -141,7 +142,7 @@ public class PBFSimulation2 : MonoBehaviour
 
         clearNeighbors();
 
-        debugNeighbors(0);
+     
     }
 
     private void spawnParticles()
@@ -471,6 +472,8 @@ public class PBFSimulation2 : MonoBehaviour
     }
     private void updateNeighbors(int i, int j)
     {
+        //Debug.Log("update neighbor " + (i,j));
+        //Debug.Log("i is " + i + " particle Number is " + particleNumber + " neighbor counter is " + neighborCounter[i]);
         particleNeighbors[i * particleNumber + neighborCounter[i]] = j;
         neighborCounter[i] += 1;
     }
@@ -499,6 +502,14 @@ public class PBFSimulation2 : MonoBehaviour
         {
             int neighborIndex = particleNeighbors[pi * particleNumber + j];
             particlesObjects[neighborIndex].GetComponent<SpriteRenderer>().color = Color.red;
+        }
+    }
+
+    private void resetGameobjectColor()
+    {
+        for(int i = 0; i < particleNumber; i ++)
+        {
+            particlesObjects[i].GetComponent<SpriteRenderer>().color = Color.blue;
         }
     }
 
