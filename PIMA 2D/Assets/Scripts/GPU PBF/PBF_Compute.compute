@@ -39,6 +39,9 @@ const float particleRadius;
 const float smoothingRadius;
 const float targetDensity;
 const float constraintForce;
+const float surfaceTensionParam1;
+const float surfaceTensionParam2;
+const float viscocityCoef;
 
 float2 ExternalForces()
 {
@@ -283,6 +286,7 @@ void CalculateDeltaP (uint3 id : SV_DispatchThreadID)
 	float2 deltaPi = float2(0,0);
 	uint pj;
 	uint pi = id.x;
+	float Scorr = 0;
 
 	float sqrRadius = smoothingRadius * smoothingRadius;
 
@@ -304,7 +308,10 @@ void CalculateDeltaP (uint3 id : SV_DispatchThreadID)
 		float dst = sqrt(sqrDstToNeighbour);
 		float2 dirToNeighbour = dst > 0 ? offsetToNeighbour / dst : float2(0, 1);
 
-		deltaPi += (lamdas[pi] + lamdas[pj]) * DerivativeSpikyPow3(dst, smoothingRadius) * dirToNeighbour;
+		//For surface tension
+		Scorr = -surfaceTensionParam1 * pow(SmoothingKernelPoly6(dst, smoothingRadius) / SmoothingKernelPoly6(surfaceTensionParam2, smoothingRadius), 4);
+
+		deltaPi += (lamdas[pi] + lamdas[pj] + Scorr) * DerivativeSpikyPow3(dst, smoothingRadius) * dirToNeighbour;
 	}
 	
 	deltaPs[id.x] = deltaPi/targetDensity;
@@ -326,6 +333,34 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
 	if (id.x >= numParticle) return;
 
 	Velocities[id.x] = (PredictedPositions[id.x] - Positions[id.x]) / deltaTime;
+
+	//Add viscocity
+	int pj;
+    float2 sum = float2(0,0);
+    float2 vij;
+    float dist;
+
+	float sqrRadius = smoothingRadius * smoothingRadius;
+    for(uint j = 0; j < neighborCounter[id.x]; j++)
+    {
+        pj = particleNeighbors[id.x * numParticle + j];
+        
+		float2 offsetToNeighbour = PredictedPositions[pj] - PredictedPositions[id.x];
+
+		float sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
+
+		// Skip if not within radius
+		if (sqrDstToNeighbour > sqrRadius) continue;
+			
+		//update the derivative
+		float dst = sqrt(sqrDstToNeighbour);
+
+        vij = Velocities[pj] - Velocities[id.x];
+        sum += vij * SmoothingKernelPoly6(dst, smoothingRadius);
+    }
+    Velocities[id.x] += viscocityCoef * sum;
+	
+	//update Positions
 	Positions[id.x] = PredictedPositions[id.x];
 	handleCollision(id.x);
 }

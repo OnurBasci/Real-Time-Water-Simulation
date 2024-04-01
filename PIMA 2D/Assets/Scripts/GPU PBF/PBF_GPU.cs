@@ -23,14 +23,11 @@ public class PBF_GPU : MonoBehaviour
     public int solverIteration = 1; //the number of times we solve the constraint
     public float deltaTime = 0.016f;
     [SerializeField] private SpawnType spawnType;
-    public bool FindNeighborsWithGrid = true;
     //tension stability coefficients
     public float k = 0.1f; //a small positif coefficient
     public float deltaq = 0.1f;
-    public bool activateSurfaceTension = false;
     //Parameters for viscocity
     public float viscocityCoef = 0.01f;
-    public bool activateViscocity = false;
 
     [Header("References")]
     public ComputeShader compute;
@@ -77,10 +74,6 @@ public class PBF_GPU : MonoBehaviour
 
     public void Start()
     {
-        Debug.Log(compute.FindKernel("ExternalForces"));
-        Debug.Log(compute.FindKernel("UpdateSpatialHash"));
-        Debug.Log(compute.FindKernel("UpdatePositions"));
-
         positions = new float2[particleNumber];
         velocities = new float2[particleNumber];
         spatialLookup = new uint3[particleNumber];
@@ -127,8 +120,8 @@ public class PBF_GPU : MonoBehaviour
         ComputeHelper.SetBuffer(compute, densitiesBuffer, "Densities", densityKernel, lamdaKenrel);
         ComputeHelper.SetBuffer(compute, spatialIndiciesBuffer, "SpatialIndices", spatialHashKernel, densityKernel, findNeighborKernel);
         ComputeHelper.SetBuffer(compute, spatialOffsetBuffer, "SpatialOffsets", spatialHashKernel, densityKernel, findNeighborKernel);
-        ComputeHelper.SetBuffer(compute, particleNeighborBuffer, "particleNeighbors", findNeighborKernel, densityKernel, lamdaKenrel, deltaPKernel);
-        ComputeHelper.SetBuffer(compute, neighborCounterBuffer, "neighborCounter", findNeighborKernel, densityKernel, lamdaKenrel, deltaPKernel);
+        ComputeHelper.SetBuffer(compute, particleNeighborBuffer, "particleNeighbors", findNeighborKernel, densityKernel, lamdaKenrel, deltaPKernel, updatePositionKernel);
+        ComputeHelper.SetBuffer(compute, neighborCounterBuffer, "neighborCounter", findNeighborKernel, densityKernel, lamdaKenrel, deltaPKernel, updatePositionKernel);
         ComputeHelper.SetBuffer(compute, lambdasBuffer, "lamdas", lamdaKenrel, deltaPKernel);
         ComputeHelper.SetBuffer(compute, deltaPsBuffer, "deltaPs", deltaPKernel, updatePredictedKernel);
 
@@ -231,7 +224,9 @@ public class PBF_GPU : MonoBehaviour
         compute.SetFloat("particleRadius", particleRadius);
         compute.SetFloat("smoothingRadius", smoothingRadius);
         compute.SetFloat("targetDensity", density);
-        compute.SetFloat("constraintForce", constraintForce);
+        compute.SetFloat("surfaceTensionParam1", k);
+        compute.SetFloat("surfaceTensionParam2", deltaq);
+        compute.SetFloat("viscocityCoef", viscocityCoef);
     }
 
     public void setBufferData()

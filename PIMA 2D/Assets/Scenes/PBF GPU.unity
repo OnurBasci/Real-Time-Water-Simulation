@@ -177,7 +177,7 @@ Camera:
   far clip plane: 1000
   field of view: 60
   orthographic: 1
-  orthographic size: 29.802599
+  orthographic size: 44.247795
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
@@ -292,16 +292,13 @@ MonoBehaviour:
   collisionDamping: 0.9
   gravity: -9.81
   particleMass: 1
-  density: 0.6
+  density: 10
   smoothingRadius: 5
   constraintForce: 0.1
   solverIteration: 4
-  deltaTime: 0.016666668
-  spawnType: 1
-  FindNeighborsWithGrid: 0
+  deltaTime: 0.008333334
+  spawnType: 0
   k: 0.1
-  deltaq: 0.3
-  activateSurfaceTension: 0
+  deltaq: 0.1
   viscocityCoef: 0.01
-  activateViscocity: 0
   compute: {fileID: 7200000, guid: f0fafa1a37644a04f8406539245c0aac, type: 3}
