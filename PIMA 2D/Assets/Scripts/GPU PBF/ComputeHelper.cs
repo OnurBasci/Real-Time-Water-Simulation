@@ -51,4 +51,17 @@ public class ComputeHelper
             }
         }
     }
+
+    public static void LoadComputeShader(ref ComputeShader shader, string name)
+    {
+        if (shader == null)
+        {
+            shader = LoadComputeShader(name);
+        }
+    }
+
+    public static ComputeShader LoadComputeShader(string name)
+    {
+        return Resources.Load<ComputeShader>(name.Split('.')[0]);
+    }
 }

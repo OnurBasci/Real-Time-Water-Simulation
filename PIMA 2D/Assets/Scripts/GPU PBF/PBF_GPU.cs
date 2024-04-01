@@ -42,6 +42,9 @@ public class PBF_GPU : MonoBehaviour
     private Vector2 verticalBoundaries = new Vector2(0, 10);
     private float2[] positions;
     private float2[] velocities;
+    private uint3[] spatialLookup;
+    private uint[] spatialOffsets;
+    private float[] densities;
 
     //Buffers
     ComputeBuffer positionsBuffer;
@@ -50,6 +53,13 @@ public class PBF_GPU : MonoBehaviour
     ComputeBuffer densitiesBuffer;
     ComputeBuffer lambdasBuffer;
     ComputeBuffer deltaPsBuffer;
+    GPUSort gpuSort;
+
+    // Kernel IDs
+    const int externalForcesKernel = 0;
+    const int spatialHashKernel = 1;
+    const int densityKernel = 2;
+    const int updatePositionKernel = 3;
 
     ComputeBuffer spatialOffsetBuffer; //contains the sorted hash values corresponding the indice in the spacialIndice array
     ComputeBuffer spatialIndiciesBuffer; //Gives the start position of the particle in the same block
@@ -59,10 +69,14 @@ public class PBF_GPU : MonoBehaviour
     public void Start()
     {
         Debug.Log(compute.FindKernel("ExternalForces"));
+        Debug.Log(compute.FindKernel("UpdateSpatialHash"));
         Debug.Log(compute.FindKernel("UpdatePositions"));
 
         positions = new float2[particleNumber];
         velocities = new float2[particleNumber];
+        spatialLookup = new uint3[particleNumber];
+        spatialOffsets = new uint[particleNumber];
+        densities = new float[particleNumber];
 
         deltaq *= smoothingRadius;
 
@@ -83,40 +97,47 @@ public class PBF_GPU : MonoBehaviour
         positionsBuffer = ComputeHelper.CreateStructuredBuffer<float2>(particleNumber);
         predictedPositionsBuffer = ComputeHelper.CreateStructuredBuffer<float2>(particleNumber);
         velocitiesBuffer = ComputeHelper.CreateStructuredBuffer<float2>(particleNumber);
+        densitiesBuffer = ComputeHelper.CreateStructuredBuffer<float>(particleNumber);
+        spatialIndiciesBuffer = ComputeHelper.CreateStructuredBuffer<uint3>(particleNumber);
+        spatialOffsetBuffer = ComputeHelper.CreateStructuredBuffer<uint>(particleNumber);
 
         setBufferData();
 
         //Set the data to the buffer
-        ComputeHelper.SetBuffer(compute, positionsBuffer, "Positions", 0, 1);
-        ComputeHelper.SetBuffer(compute, predictedPositionsBuffer, "PredictedPositions", 0, 1);
-        ComputeHelper.SetBuffer(compute, velocitiesBuffer, "Velocities", 0, 1);
-
-        /*
-        compute.SetBuffer(0, "Positions", positionsBuffer);
-        compute.SetBuffer(0, "Velocities", velocitiesBuffer);
-        compute.SetBuffer(0, "PredictedPositions", predictedPositionsBuffer);
-        */
+        ComputeHelper.SetBuffer(compute, positionsBuffer, "Positions", externalForcesKernel, updatePositionKernel);
+        ComputeHelper.SetBuffer(compute, predictedPositionsBuffer, "PredictedPositions", externalForcesKernel, spatialHashKernel, updatePositionKernel, densityKernel);
+        ComputeHelper.SetBuffer(compute, velocitiesBuffer, "Velocities", externalForcesKernel, updatePositionKernel);
+        ComputeHelper.SetBuffer(compute, densitiesBuffer, "Densities", densityKernel);
+        ComputeHelper.SetBuffer(compute, spatialIndiciesBuffer, "SpatialIndices", spatialHashKernel, densityKernel);
+        ComputeHelper.SetBuffer(compute, spatialOffsetBuffer, "SpatialOffsets", spatialHashKernel, densityKernel);
 
         //Set the constants to the buffer
-        UpdateSetting(); 
+        UpdateSetting();
+
+        gpuSort = new();
+        gpuSort.SetBuffers(spatialIndiciesBuffer, spatialOffsetBuffer);
     }
 
     public void Update()
     {
-        //Debug.Log(string.Join(" ", positions));
+        Debug.Log(particleNumber);
         runSimulationStep();
 
         //get back the position
         positionsBuffer.GetData(positions);
 
         velocitiesBuffer.GetData(velocities);
-        Debug.Log(string.Join(" ", positions));
-        
 
-    }
+        densitiesBuffer.GetData(densities);
 
-    public void LateUpdate()
-    {
+        Debug.Log(string.Join(" ", densities));
+
+        /*spatialIndiciesBuffer.GetData(spatialLookup);
+        spatialOffsetBuffer.GetData(spatialOffsets);
+
+        Debug.Log(string.Join(" ", spatialLookup));
+        */
+
         //make the objects move
         for (int i = 0; i < particleNumber; i++)
         {
@@ -125,10 +146,14 @@ public class PBF_GPU : MonoBehaviour
     }
 
 
+
     public void runSimulationStep()
     {
-        ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: 0);
-        ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: 1);
+        ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: externalForcesKernel);
+        ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: spatialHashKernel);
+        gpuSort.SortAndCalculateOffsets();
+        ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: densityKernel);
+        ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: updatePositionKernel);
     }
 
     private void spawnParticles()
@@ -177,8 +202,15 @@ public class PBF_GPU : MonoBehaviour
     public void UpdateSetting()
     {
         compute.SetFloat("gravity", gravity);
-        compute.SetFloat("numParticle", particleNumber);
+        compute.SetInt("numParticle", particleNumber);
         compute.SetFloat("deltaTime", deltaTime);
+        compute.SetFloat("collisionDamping", collisionDamping);
+        compute.SetFloat("verticalBoundariesLower", verticalBoundaries.x);
+        compute.SetFloat("verticalBoundariesUpper", verticalBoundaries.y);
+        compute.SetFloat("horizontalBoundariesLeft", horizontalBoundaries.x);
+        compute.SetFloat("horizontalBoundariesRight", horizontalBoundaries.y);
+        compute.SetFloat("particleRadius", particleRadius);
+        compute.SetFloat("smoothingRadius", smoothingRadius);
     }
 
     public void setBufferData()

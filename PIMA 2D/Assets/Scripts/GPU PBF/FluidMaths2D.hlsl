@@ -1,4 +1,5 @@
-const float Poly6ScalingFactor;
+#define PI 3.14159265359
+const float Poly6ScalingFactor = 315/(64*PI);
 const float SpikyPow3ScalingFactor;
 const float SpikyPow2ScalingFactor;
 const float SpikyPow3DerivativeScalingFactor;
@@ -9,7 +10,7 @@ float SmoothingKernelPoly6(float dst, float radius)
 	if (dst < radius)
 	{
 		float v = radius * radius - dst * dst;
-		return v * v * v * Poly6ScalingFactor;
+		return v * v * v * 315/(64*PI*pow(abs(radius),9));
 	}
 	return 0;
 }

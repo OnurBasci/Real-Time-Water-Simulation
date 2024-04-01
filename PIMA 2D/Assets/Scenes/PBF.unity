@@ -326,7 +326,7 @@ MonoBehaviour:
   constraintForce: 0.1
   solverIteration: 4
   deltaTime: 0.016666668
-  spawnType: 1
+  spawnType: 0
   FindNeighborsWithGrid: 0
   k: 0.1
   deltaq: 0.3
