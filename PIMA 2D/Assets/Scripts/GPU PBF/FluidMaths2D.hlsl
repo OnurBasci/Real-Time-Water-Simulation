@@ -20,7 +20,7 @@ float SpikyKernelPow3(float dst, float radius)
 	if (dst < radius)
 	{
 		float v = radius - dst;
-		return v * v * v * SpikyPow3ScalingFactor;
+		return v * v * v * 15/(PI*pow(abs(radius), 6));
 	}
 	return 0;
 }
@@ -40,7 +40,7 @@ float DerivativeSpikyPow3(float dst, float radius)
 	if (dst <= radius)
 	{
 		float v = radius - dst;
-		return -v * v * SpikyPow3DerivativeScalingFactor;
+		return -v * v * 45/(PI*pow(abs(radius), 6));
 	}
 	return 0;
 }

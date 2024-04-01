@@ -177,7 +177,7 @@ Camera:
   far clip plane: 1000
   field of view: 60
   orthographic: 1
-  orthographic size: 27.26502
+  orthographic size: 29.802599
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
@@ -286,7 +286,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   particleObject: {fileID: 7815605973295585089, guid: 98dbef7931cefe94ead96d73055f2a92, type: 3}
-  particleNumber: 300
+  particleNumber: 400
   particleDistances: {x: 1, y: 1}
   particleRadius: 0.5
   collisionDamping: 0.9
@@ -297,7 +297,7 @@ MonoBehaviour:
   constraintForce: 0.1
   solverIteration: 4
   deltaTime: 0.016666668
-  spawnType: 0
+  spawnType: 1
   FindNeighborsWithGrid: 0
   k: 0.1
   deltaq: 0.3

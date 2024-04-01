@@ -315,7 +315,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   particleObject: {fileID: 7815605973295585089, guid: 98dbef7931cefe94ead96d73055f2a92, type: 3}
-  particleNumber: 400
+  particleNumber: 300
   particleDistances: {x: 1, y: 1}
   particleRadius: 0.5
   collisionDamping: 0.9
