@@ -177,7 +177,7 @@ Camera:
   far clip plane: 1000
   field of view: 60
   orthographic: 1
-  orthographic size: 166.10565
+  orthographic size: 246.6915
   m_Depth: -1
   m_CullingMask:
     serializedVersion: 2
@@ -288,7 +288,7 @@ MonoBehaviour:
   particleObject: {fileID: 7815605973295585089, guid: 98dbef7931cefe94ead96d73055f2a92, type: 3}
   particleNumber: 4000
   particleDistances: {x: 1, y: 1}
-  particleRadius: 1
+  particleRadius: 2
   collisionDamping: 0.9
   gravity: -9.81
   particleMass: 1
@@ -298,9 +298,9 @@ MonoBehaviour:
   solverIteration: 4
   deltaTime: 0.016666668
   spawnType: 1
-  k: 0.1
+  k: 0.3
   deltaq: 0.1
-  viscocityCoef: 0.01
-  interactionStrength: 400
-  interactionRadius: 20
+  viscocityCoef: 3
+  interactionStrength: 100
+  interactionRadius: 120
   compute: {fileID: 7200000, guid: f0fafa1a37644a04f8406539245c0aac, type: 3}
