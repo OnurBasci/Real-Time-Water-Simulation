@@ -1,0 +1,55 @@
+#pragma kernel ExternalForces
+#pragma kernel UpdatePositions
+
+// Includes
+#include "./FluidMaths2D.hlsl"
+#include "./SpatialHash.hlsl"
+
+static const int NumThreads = 64;
+
+// Buffers
+RWStructuredBuffer<float2> Positions;
+RWStructuredBuffer<float2> PredictedPositions;
+RWStructuredBuffer<float2> Velocities;
+RWStructuredBuffer<float2> Densities; // Density, Near Density
+RWStructuredBuffer<uint3> SpatialIndices; // used for spatial hashing
+RWStructuredBuffer<uint> SpatialOffsets; // used for spatial hashing
+RWStructuredBuffer<int> lamdas;
+RWStructuredBuffer<int> deltaPs;
+
+//Setting
+const float gravity;
+const uint numParticle;
+const float deltaTime;
+
+float2 ExternalForces()
+{
+	// Gravity
+	float2 gravityAccel = float2(0, gravity);
+
+	return gravityAccel;
+}
+
+[numthreads(NumThreads,1,1)]
+void ExternalForces(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= numParticle) return;
+
+	// External forces (gravity and input interaction)
+	Velocities[id.x] += ExternalForces() * deltaTime;
+
+	// Predict
+	const float predictionFactor = 1 / 120.0;
+	PredictedPositions[id.x] = Positions[id.x] + Velocities[id.x] * predictionFactor;
+}
+
+
+[numthreads(NumThreads, 1, 1)]
+void UpdatePositions(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= numParticle) return;
+
+	Positions[id.x] += Velocities[id.x] * deltaTime;
+	//Positions[id.x] = float2(id.x, 0);
+	//HandleCollisions(id.x);
+}

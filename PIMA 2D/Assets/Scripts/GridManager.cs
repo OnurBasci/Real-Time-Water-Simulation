@@ -107,6 +107,9 @@ public class GridManager
             uint key = getKeyFromHash(HashCell(cellIndexX, cellIndexY), particleNumber);
             int cellStartIndex = startIndices[key];
 
+            //check if the cell is updated in the updat spatial look up
+            if (cellStartIndex == -1) continue;
+
             for (int i = cellStartIndex; i < spatialLookUp.Count; i ++)
             {
                 //exit the loop if we are no longer looking at the correct cell
@@ -155,8 +158,8 @@ public class GridManager
         }
 
         
-        Debug.Log("spatial lookup array: " + string.Join(", ", spatialLookUp));
-        Debug.Log("startIndices array: " + string.Join(", ", startIndices));
+        /*Debug.Log("spatial lookup array: " + string.Join(", ", spatialLookUp));
+        Debug.Log("startIndices array: " + string.Join(", ", startIndices));*/
         
     }
 

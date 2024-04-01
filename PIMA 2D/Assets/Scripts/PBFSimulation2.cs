@@ -13,7 +13,6 @@ public class PBFSimulation2 : MonoBehaviour
 
     public GameObject particleObject;
 
-    public int debugParticleIndex = 1;
     public int particleNumber;
     public Vector2 particleDistances = new Vector2(1,1);
     public float particleRadius = 1f;
@@ -31,6 +30,9 @@ public class PBFSimulation2 : MonoBehaviour
     public float k = 0.1f; //a small positif coefficient
     public float deltaq = 0.1f;
     public bool activateSurfaceTension = false;
+    //Parameters for viscocity
+    public float viscocityCoef = 0.01f;
+    public bool activateViscocity = false;
 
     private List<GameObject> particlesObjects = new List<GameObject>();
 
@@ -135,14 +137,14 @@ public class PBFSimulation2 : MonoBehaviour
         for (int i = 0; i < particleNumber; i++)
         {
             velocities[i] = (predictedPositions[i] - positions[i]) / deltaTime;
+            if(activateViscocity)
+                addViscocity(i);
             positions[i] = predictedPositions[i];
             checkBoundaryConditions(i);
             particlesObjects[i].transform.position = positions[i];
         }
 
         clearNeighbors();
-
-     
     }
 
     private void spawnParticles()
@@ -395,6 +397,24 @@ public class PBFSimulation2 : MonoBehaviour
         }
 
         return density;
+    }
+
+    private void addViscocity(int i)
+    {
+        //update the velocity for the particle i
+        int pj;
+        Vector3 sum = Vector3.zero;
+        Vector3 vij;
+        float dist;
+        for(int j = 0; j < neighborCounter[i]; j++)
+        {
+            pj = particleNeighbors[i * particleNumber + j];
+            dist = (predictedPositions[i] - predictedPositions[pj]).magnitude;
+            vij = velocities[pj] - velocities[i];
+            sum += vij * poly6Kernel(dist, smoothingRadius);
+        }
+        //update velocity
+        velocities[i] += viscocityCoef * sum;
     }
 
     private float poly6Kernel(float r, float h)
