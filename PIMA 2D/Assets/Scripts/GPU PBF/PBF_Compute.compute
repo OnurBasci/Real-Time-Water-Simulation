@@ -42,14 +42,36 @@ const float constraintForce;
 const float surfaceTensionParam1;
 const float surfaceTensionParam2;
 const float viscocityCoef;
+const float2 interactionInputPoint;
+const float interactionInputStrength;
+const float interactionInputRadius;
 
-float2 ExternalForces()
+float2 ExternalForces(float2 pos, float2 velocity)
 {
 	// Gravity
 	float2 gravityAccel = float2(0, gravity);
+	
+	// Input interactions modify gravity
+	if (interactionInputStrength != 0) {
+		float2 inputPointOffset = interactionInputPoint - pos;
+		float sqrDst = dot(inputPointOffset, inputPointOffset);
+		if (sqrDst < interactionInputRadius * interactionInputRadius)
+		{
+			float dst = sqrt(sqrDst);
+			float edgeT = (dst / interactionInputRadius);
+			float centreT = 1 - edgeT;
+			float2 dirToCentre = inputPointOffset / dst;
+
+			float gravityWeight = 1 - (centreT * saturate(interactionInputStrength / 10));
+			float2 accel = gravityAccel * gravityWeight + dirToCentre * centreT * interactionInputStrength;
+			accel -= velocity * centreT;
+			return accel;
+		}
+	}
 
 	return gravityAccel;
 }
+
 
 void handleCollision(uint particleIndex)
 {
@@ -151,7 +173,7 @@ void ExternalForces(uint3 id : SV_DispatchThreadID)
 	if (id.x >= numParticle) return;
 
 	// External forces (gravity and input interaction)
-	Velocities[id.x] += ExternalForces() * deltaTime;
+	Velocities[id.x] += ExternalForces(Positions[id.x], Velocities[id.x]) * deltaTime;
 
 	// Predict
 	PredictedPositions[id.x] = Positions[id.x] + Velocities[id.x] * deltaTime;

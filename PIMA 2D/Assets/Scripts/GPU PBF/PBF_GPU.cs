@@ -28,6 +28,9 @@ public class PBF_GPU : MonoBehaviour
     public float deltaq = 0.1f;
     //Parameters for viscocity
     public float viscocityCoef = 0.01f;
+    [Header("Mouse Interraction")]
+    public float interactionStrength = 1;
+    public float interactionRadius = 5;
 
     [Header("References")]
     public ComputeShader compute;
@@ -134,6 +137,9 @@ public class PBF_GPU : MonoBehaviour
 
     public void Update()
     {
+        //Check mouse interraction
+        checkMouseInterraction();
+
         //Debug.Log(particleNumber);
         runSimulationStep();
 
@@ -227,6 +233,33 @@ public class PBF_GPU : MonoBehaviour
         compute.SetFloat("surfaceTensionParam1", k);
         compute.SetFloat("surfaceTensionParam2", deltaq);
         compute.SetFloat("viscocityCoef", viscocityCoef);
+        compute.SetVector("interactionInputPoint", new Vector2(0,0));
+        compute.SetFloat("interactionInputStrength", 0);
+        compute.SetFloat("interactionInputRadius", 0);
+    }
+
+    public void checkMouseInterraction()
+    {
+        // Mouse interaction settings:
+        bool isPullInteraction = Input.GetMouseButton(0);
+        bool isPushInteraction = Input.GetMouseButton(1);
+        float currInteractStrength;
+        if (isPushInteraction || isPullInteraction)
+        {
+            currInteractStrength = isPushInteraction ? -interactionStrength : interactionStrength;
+
+            Vector2 mousePos = Camera.main.ScreenToWorldPoint(Input.mousePosition);
+
+            compute.SetVector("interactionInputPoint", mousePos);
+            compute.SetFloat("interactionInputStrength", currInteractStrength);
+            compute.SetFloat("interactionInputRadius", interactionRadius);
+        }
+        else
+        {
+            compute.SetVector("interactionInputPoint", new Vector2(0, 0));
+            compute.SetFloat("interactionInputStrength", 0);
+            compute.SetFloat("interactionInputRadius", 0);
+        }
     }
 
     public void setBufferData()
