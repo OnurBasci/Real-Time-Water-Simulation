@@ -6,7 +6,8 @@ using UnityEngine;
 public class PBF3D : MonoBehaviour
 {
     //This function handles the data to use it on a compute shader to execute the PBF simulation on the GPU
-    public GameObject particleObject;
+    public Mesh particleMesh;
+    public Material particleMaterial;
 
     [Header("Simulation parameters")]
     public int particleNumber;
@@ -73,6 +74,9 @@ public class PBF3D : MonoBehaviour
     ComputeBuffer spatialOffsetBuffer; //contains the sorted hash values corresponding the indice in the spacialIndice array
     ComputeBuffer spatialIndiciesBuffer; //Gives the start position of the particle in the same block
 
+    Matrix4x4[] sphereCaracteristics;
+    RenderParams _rp;
+
     enum SpawnType { UNIFORM, RANDOM };
 
     public void Start()
@@ -87,6 +91,11 @@ public class PBF3D : MonoBehaviour
         deltaPs = new float3[particleNumber];
 
         deltaq *= smoothingRadius;
+
+        //for gpu instancing
+        sphereCaracteristics = new Matrix4x4[particleNumber];
+        particleMaterial.enableInstancing = true;
+        _rp = new RenderParams(particleMaterial);
 
         //set the boundaries as camera boundaries
         horizontalBoundaries = new Vector2(-boundaryLengths.x/2, boundaryLengths.x/2);
@@ -143,16 +152,26 @@ public class PBF3D : MonoBehaviour
         //get back the position
         positionsBuffer.GetData(positions);
 
-        deltaPsBuffer.GetData(deltaPs);
-        //Debug.Log("offsets " + string.Join(" ", deltaPs));
+        //deltaPsBuffer.GetData(deltaPs);
+        //Debug.Log("offsets " + string.Join(" ", positions));
 
         //make the objects move
         //float startTime = Time.realtimeSinceStartup;
+
+        //gpu instancing to update positions
+
+
         for (int i = 0; i < particleNumber; i++)
         {
-            particlesObjects[i].transform.position = new Vector3(positions[i].x, positions[i].y, positions[i].z);
+            sphereCaracteristics[i].SetTRS(new Vector3(positions[i].x, positions[i].y, positions[i].z), Quaternion.identity, Vector3.one);
+            //sphereCaracteristics[i] = Matrix4x4.Translate(new Vector3(positions[i].x, positions[i].y, positions[i].z));
+            //particlesObjects[i].transform.position = new Vector3(positions[i].x, positions[i].y, positions[i].z);
         }
         //Debug.Log("The time passed for moving particles " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
+
+        //Debug.Log(sphereCaracteristics[0]);
+
+        Graphics.RenderMeshInstanced(_rp, particleMesh, 0, sphereCaracteristics);
     }
 
 
@@ -209,9 +228,9 @@ public class PBF3D : MonoBehaviour
 
             randomSpawnPos = new Vector3(UnityEngine.Random.Range(horizontalBoundaries.x, horizontalBoundaries.y),
                 UnityEngine.Random.Range(verticalBoundaries.x, verticalBoundaries.y), UnityEngine.Random.Range(depthBoundaries.x, depthBoundaries.y));
-            GameObject p1 = Instantiate(particleObject, randomSpawnPos, Quaternion.identity);
-            p1.transform.localScale = new Vector3(particleRadius * 2, particleRadius * 2, particleRadius * 2);
-            particlesObjects.Add(p1);
+            //GameObject p1 = Instantiate(particleObject, randomSpawnPos, Quaternion.identity);
+            //p1.transform.localScale = new Vector3(particleRadius * 2, particleRadius * 2, particleRadius * 2);
+            //particlesObjects.Add(p1);
 
             //intialize particle data
             positions[i] = randomSpawnPos;
