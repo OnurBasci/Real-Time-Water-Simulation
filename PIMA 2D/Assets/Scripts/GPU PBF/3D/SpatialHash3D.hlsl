@@ -1,14 +1,16 @@
-static const int2 offsets2D[9] =
+static const int3 offsets3D[27] =
 {
-	int2(-1, 1),
-	int2(0, 1),
-	int2(1, 1),
-	int2(-1, 0),
-	int2(0, 0),
-	int2(1, 0),
-	int2(-1, -1),
-	int2(0, -1),
-	int2(1, -1),
+    int3(-1, 1, -1), int3(0, 1, -1), int3(1, 1, -1),
+    int3(-1, 0, -1), int3(0, 0, -1), int3(1, 0, -1),
+    int3(-1, -1, -1), int3(0, -1, -1), int3(1, -1, -1),
+    
+    int3(-1, 1, 0), int3(0, 1, 0), int3(1, 1, 0),
+    int3(-1, 0, 0), int3(0, 0, 0), int3(1, 0, 0),
+    int3(-1, -1, 0), int3(0, -1, 0), int3(1, -1, 0),
+    
+    int3(-1, 1, 1), int3(0, 1, 1), int3(1, 1, 1),
+    int3(-1, 0, 1), int3(0, 0, 1), int3(1, 0, 1),
+    int3(-1, -1, 1), int3(0, -1, 1), int3(1, -1, 1)
 };
 
 // Constants used for hashing
@@ -16,15 +18,15 @@ static const uint hashK1 = 15823;
 static const uint hashK2 = 9737333;
 
 // Convert floating point position into an integer cell coordinate
-int2 GetCell2D(float2 position, float radius)
+int3 GetCell3D(float3 position, float radius)
 {
-	return (int2)floor(position / radius);
+	return (int3)floor(position / radius);
 }
 
 // Hash cell coordinate to a single unsigned integer
-uint HashCell2D(int2 cell)
+uint HashCell3D(int3 cell)
 {
-	cell = (uint2)cell;
+	cell = (uint3)cell;
 	uint a = cell.x * hashK1;
 	uint b = cell.y * hashK2;
 	return (a + b);

@@ -42,6 +42,8 @@ public class PBF_GPU : MonoBehaviour
     private Vector2 verticalBoundaries = new Vector2(0, 10);
     private float2[] positions;
     private float2[] velocities;
+    private uint[] spatialOffsets;
+    private uint3[] spatialIndex;
 
     //Buffers
     ComputeBuffer positionsBuffer;
@@ -73,8 +75,10 @@ public class PBF_GPU : MonoBehaviour
     {
         positions = new float2[particleNumber];
         velocities = new float2[particleNumber];
+        spatialOffsets = new uint[particleNumber];
+        spatialIndex = new uint3[particleNumber];
 
-        deltaq *= smoothingRadius;
+    deltaq *= smoothingRadius;
 
         //set the boundaries as camera boundaries
         Vector3 cameraCenter = Camera.main.transform.position;

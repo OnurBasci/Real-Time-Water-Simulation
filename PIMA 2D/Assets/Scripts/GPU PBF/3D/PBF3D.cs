@@ -42,6 +42,12 @@ public class PBF3D : MonoBehaviour
     private Vector3 depthBoundaries = new Vector2(0, 10);
     private float3[] positions;
     private float3[] velocities;
+    private uint[] spatialOffsets;
+    private uint3[] spatialIndex;
+    private uint[] particleNeighbors;
+    private float[] densities;
+    private float[] lamdas;
+    private float3[] deltaPs;
 
     //Buffers
     ComputeBuffer positionsBuffer;
@@ -56,13 +62,13 @@ public class PBF3D : MonoBehaviour
 
     // Kernel IDs
     const int externalForcesKernel = 0;
-    //const int spatialHashKernel = 1;
-    //const int findNeighborKernel = 2;
-    //const int densityKernel = 3;
-    //const int lamdaKenrel = 4;
-    //const int deltaPKernel = 5;
-    //const int updatePredictedKernel = 6;
-    const int updatePositionKernel = 1;
+    const int spatialHashKernel = 1;
+    const int findNeighborKernel = 2;
+    const int densityKernel = 3;
+    const int lamdaKenrel = 4;
+    const int deltaPKernel = 5;
+    const int updatePredictedKernel = 6;
+    const int updatePositionKernel = 7;
 
     ComputeBuffer spatialOffsetBuffer; //contains the sorted hash values corresponding the indice in the spacialIndice array
     ComputeBuffer spatialIndiciesBuffer; //Gives the start position of the particle in the same block
@@ -73,6 +79,12 @@ public class PBF3D : MonoBehaviour
     {
         positions = new float3[particleNumber];
         velocities = new float3[particleNumber];
+        spatialOffsets = new uint[particleNumber];
+        spatialIndex = new uint3[particleNumber];
+        particleNeighbors = new uint[particleNumber*particleNumber];
+        densities = new float[particleNumber];
+        lamdas = new float[particleNumber];
+        deltaPs = new float3[particleNumber];
 
         deltaq *= smoothingRadius;
 
@@ -102,16 +114,16 @@ public class PBF3D : MonoBehaviour
 
         //Set the data to the buffer
         ComputeHelper.SetBuffer(compute, positionsBuffer, "Positions", externalForcesKernel, updatePositionKernel);
-        ComputeHelper.SetBuffer(compute, predictedPositionsBuffer, "PredictedPositions", externalForcesKernel,
-            updatePositionKernel);
+        ComputeHelper.SetBuffer(compute, predictedPositionsBuffer, "PredictedPositions", externalForcesKernel, spatialHashKernel,
+            updatePositionKernel, densityKernel, findNeighborKernel, lamdaKenrel, deltaPKernel, updatePredictedKernel);
         ComputeHelper.SetBuffer(compute, velocitiesBuffer, "Velocities", externalForcesKernel, updatePositionKernel);
-        ComputeHelper.SetBuffer(compute, densitiesBuffer, "Densities");
-        ComputeHelper.SetBuffer(compute, spatialIndiciesBuffer, "SpatialIndices");
-        ComputeHelper.SetBuffer(compute, spatialOffsetBuffer, "SpatialOffsets");
-        ComputeHelper.SetBuffer(compute, particleNeighborBuffer, "particleNeighbors",updatePositionKernel);
-        ComputeHelper.SetBuffer(compute, neighborCounterBuffer, "neighborCounter",updatePositionKernel);
-        ComputeHelper.SetBuffer(compute, lambdasBuffer, "lamdas");
-        ComputeHelper.SetBuffer(compute, deltaPsBuffer, "deltaPs");
+        ComputeHelper.SetBuffer(compute, densitiesBuffer, "Densities", densityKernel, lamdaKenrel);
+        ComputeHelper.SetBuffer(compute, spatialIndiciesBuffer, "SpatialIndices", spatialHashKernel, findNeighborKernel, densityKernel);
+        ComputeHelper.SetBuffer(compute, spatialOffsetBuffer, "SpatialOffsets", spatialHashKernel, findNeighborKernel, densityKernel);
+        ComputeHelper.SetBuffer(compute, particleNeighborBuffer, "particleNeighbors", densityKernel, updatePositionKernel, findNeighborKernel, lamdaKenrel, deltaPKernel);
+        ComputeHelper.SetBuffer(compute, neighborCounterBuffer, "neighborCounter", findNeighborKernel, densityKernel, updatePositionKernel, lamdaKenrel, deltaPKernel);
+        ComputeHelper.SetBuffer(compute, lambdasBuffer, "lamdas", lamdaKenrel, deltaPKernel);
+        ComputeHelper.SetBuffer(compute, deltaPsBuffer, "deltaPs", deltaPKernel, updatePredictedKernel);
 
         //Set the constants to the buffer
         UpdateSetting();
@@ -131,8 +143,8 @@ public class PBF3D : MonoBehaviour
         //get back the position
         positionsBuffer.GetData(positions);
 
-        //deltaPsBuffer.GetData(deltaPs);
-        //Debug.Log("deltaps " + string.Join(" ", deltaPs));
+        deltaPsBuffer.GetData(deltaPs);
+        //Debug.Log("offsets " + string.Join(" ", deltaPs));
 
         //make the objects move
         //float startTime = Time.realtimeSinceStartup;
@@ -148,7 +160,7 @@ public class PBF3D : MonoBehaviour
     public void runSimulationStep()
     {
         ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: externalForcesKernel);
-        /*ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: spatialHashKernel);
+        ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: spatialHashKernel);
         gpuSort.SortAndCalculateOffsets();
         ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: findNeighborKernel);
         for (int simulationIter = 0; simulationIter < solverIteration; simulationIter++)
@@ -157,7 +169,7 @@ public class PBF3D : MonoBehaviour
             ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: lamdaKenrel);
             ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: deltaPKernel);
             ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: updatePredictedKernel);
-        }*/
+        }
         ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: updatePositionKernel);
     }
 
@@ -265,6 +277,17 @@ public class PBF3D : MonoBehaviour
     {
         ComputeHelper.Release(positionsBuffer, predictedPositionsBuffer, velocitiesBuffer, densitiesBuffer,
             spatialIndiciesBuffer, spatialOffsetBuffer, neighborCounterBuffer, particleNeighborBuffer, lambdasBuffer, deltaPsBuffer);
+    }
+
+    private void clearNeighbors()
+    {
+        ComputeHelper.Release(particleNeighborBuffer, neighborCounterBuffer);
+
+        particleNeighborBuffer = ComputeHelper.CreateStructuredBuffer<int>(particleNumber * particleNumber);
+        neighborCounterBuffer = ComputeHelper.CreateStructuredBuffer<int>(particleNumber);
+
+        ComputeHelper.SetBuffer(compute, particleNeighborBuffer, "particleNeighbors", findNeighborKernel);
+        ComputeHelper.SetBuffer(compute, neighborCounterBuffer, "neighborCounter", findNeighborKernel);
     }
 
     void OnDrawGizmosSelected()

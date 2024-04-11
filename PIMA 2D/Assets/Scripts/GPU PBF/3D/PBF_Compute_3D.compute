@@ -1,10 +1,10 @@
 #pragma kernel ExternalForces
-//#pragma kernel UpdateSpatialHash
-//#pragma kernel FindNeighbors;
-//#pragma kernel CalculateDensities
-//#pragma kernel CalculateLamdas
-//#pragma kernel CalculateDeltaP
-//#pragma kernel UpdatePredictedPosition
+#pragma kernel UpdateSpatialHash
+#pragma kernel FindNeighbors;
+#pragma kernel CalculateDensities
+#pragma kernel CalculateLamdas
+#pragma kernel CalculateDeltaP
+#pragma kernel UpdatePredictedPosition
 #pragma kernel UpdatePositions
 
 // Includes
@@ -195,7 +195,7 @@ void ExternalForces(uint3 id : SV_DispatchThreadID)
 }
 
 
-/*
+
 [numthreads(NumThreads,1,1)]
 void UpdateSpatialHash (uint3 id : SV_DispatchThreadID)
 {
@@ -205,13 +205,13 @@ void UpdateSpatialHash (uint3 id : SV_DispatchThreadID)
 	SpatialOffsets[id.x] = numParticle;
 	// Update index buffer
 	uint index = id.x;
-	int2 cell = GetCell2D(PredictedPositions[index], smoothingRadius);
-	uint hash = HashCell2D(cell);
+	int3 cell = GetCell3D(PredictedPositions[index], smoothingRadius);
+	uint hash = HashCell3D(cell);
 	uint key = KeyFromHash(hash, numParticle);
 	SpatialIndices[id.x] = uint3(index, hash, key);
 }
-*/
-/*
+
+
 [numthreads(NumThreads,1,1)]
 void CalculateDensities (uint3 id : SV_DispatchThreadID)
 {
@@ -219,17 +219,17 @@ void CalculateDensities (uint3 id : SV_DispatchThreadID)
 
 	Densities[id.x] = CalculateDensity(id.x);
 }
-*/
 
-/*
+
+
 [numthreads(NumThreads, 1,1)]
 void FindNeighbors(uint3 id : SV_DispatchThreadID)
 {
 	if(id.x >= numParticle) return;
 
-	float2 pos = PredictedPositions[id.x];
+	float3 pos = PredictedPositions[id.x];
 
-	int2 originCell = GetCell2D(pos, smoothingRadius);
+	int3 originCell = GetCell3D(pos, smoothingRadius);
 	float sqrRadius = smoothingRadius * smoothingRadius;
 
 	//reinitialize the array
@@ -238,7 +238,7 @@ void FindNeighbors(uint3 id : SV_DispatchThreadID)
 	// Neighbour search
 	for (int i = 0; i < 9; i++)
 	{
-		uint hash = HashCell2D(originCell + offsets2D[i]);
+		uint hash = HashCell3D(originCell + offsets3D[i]);
 		uint key = KeyFromHash(hash, numParticle);
 		uint currIndex = SpatialOffsets[key];
 
@@ -253,8 +253,8 @@ void FindNeighbors(uint3 id : SV_DispatchThreadID)
 
 			uint neighbourIndex = indexData[0];
 
-			float2 neighbourPos = PredictedPositions[neighbourIndex];
-			float2 offsetToNeighbour = neighbourPos - pos;
+			float3 neighbourPos = PredictedPositions[neighbourIndex];
+			float3 offsetToNeighbour = neighbourPos - pos;
 			float sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
 
 			// Skip if not within radius
@@ -265,8 +265,8 @@ void FindNeighbors(uint3 id : SV_DispatchThreadID)
 		}
 	}
 }
-*/
-/*
+
+
 [numthreads(NumThreads,1,1)]
 void CalculateLamdas (uint3 id : SV_DispatchThreadID)
 {
@@ -287,7 +287,7 @@ void CalculateLamdas (uint3 id : SV_DispatchThreadID)
 
 		if (k != i)
 		{
-			float2 offsetToNeighbour = PredictedPositions[i] - PredictedPositions[k];
+			float3 offsetToNeighbour = PredictedPositions[i] - PredictedPositions[k];
 			float sqrDist = dot(offsetToNeighbour, offsetToNeighbour);
 
 			// Skip if not within radius
@@ -301,7 +301,7 @@ void CalculateLamdas (uint3 id : SV_DispatchThreadID)
 			for(uint j = 0; j < neighborCounter[i]; j ++)
 			{
 				int pj = particleNeighbors[i * numParticle + j];
-				float2 offsetToNeighbour = PredictedPositions[pj] - PredictedPositions[i];
+				float3 offsetToNeighbour = PredictedPositions[pj] - PredictedPositions[i];
 
 				float sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
 
@@ -319,14 +319,14 @@ void CalculateLamdas (uint3 id : SV_DispatchThreadID)
 
 	lamdas[id.x] = -constraintFunction(id.x)/(denominator + constraintForce);
 }
-*/
-/*
+
+
 [numthreads(NumThreads,1,1)]
 void CalculateDeltaP (uint3 id : SV_DispatchThreadID)
 {
 	if (id.x >= numParticle) return;
 
-	float2 deltaPi = float2(0,0);
+	float3 deltaPi = float3(0,0,0);
 	uint pj;
 	uint pi = id.x;
 	float Scorr = 0;
@@ -340,7 +340,7 @@ void CalculateDeltaP (uint3 id : SV_DispatchThreadID)
 		//return if the neighbor is the same particle
 		if(pi == pj) continue;
 
-		float2 offsetToNeighbour = PredictedPositions[pj] - PredictedPositions[pi];
+		float3 offsetToNeighbour = PredictedPositions[pj] - PredictedPositions[pi];
 
 		float sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
 
@@ -349,7 +349,7 @@ void CalculateDeltaP (uint3 id : SV_DispatchThreadID)
 			
 		//update the derivative
 		float dst = sqrt(sqrDstToNeighbour);
-		float2 dirToNeighbour = dst > 0 ? offsetToNeighbour / dst : float2(0, 1);
+		float3 dirToNeighbour = dst > 0 ? offsetToNeighbour / dst : float3(0, 1, 0);
 
 		//For surface tension
 		Scorr = -surfaceTensionParam1 * pow(SmoothingKernelPoly6(dst, smoothingRadius) / SmoothingKernelPoly6(surfaceTensionParam2, smoothingRadius), 4);
@@ -359,8 +359,8 @@ void CalculateDeltaP (uint3 id : SV_DispatchThreadID)
 	
 	deltaPs[id.x] = deltaPi/targetDensity;
 }
-*/
-/*
+
+
 [numthreads(NumThreads, 1, 1)]
 void UpdatePredictedPosition(uint3 id : SV_DispatchThreadID)
 {
@@ -368,20 +368,19 @@ void UpdatePredictedPosition(uint3 id : SV_DispatchThreadID)
 
 	PredictedPositions[id.x] += deltaPs[id.x] * deltaTime;
 }
-*/
+
 
 [numthreads(NumThreads, 1, 1)]
 void UpdatePositions(uint3 id : SV_DispatchThreadID)
 {
 	if (id.x >= numParticle) return;
 
-	/*
 	Velocities[id.x] = (PredictedPositions[id.x] - Positions[id.x]) / deltaTime;
 
 	//Add viscocity
 	int pj;
-    float2 sum = float2(0,0);
-    float2 vij;
+    float3 sum = float3(0,0,0);
+    float3 vij;
     float dist;
 
 	float sqrRadius = smoothingRadius * smoothingRadius;
@@ -389,7 +388,7 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
     {
         pj = particleNeighbors[id.x * numParticle + j];
         
-		float2 offsetToNeighbour = PredictedPositions[pj] - PredictedPositions[id.x];
+		float3 offsetToNeighbour = PredictedPositions[pj] - PredictedPositions[id.x];
 
 		float sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
 
@@ -404,7 +403,7 @@ void UpdatePositions(uint3 id : SV_DispatchThreadID)
     }
     Velocities[id.x] += viscocityCoef * sum;
 	
-	*/
+
 	//update Positions
 	Positions[id.x] = PredictedPositions[id.x];
 	handleCollision(id.x);
