@@ -1,11 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.Mathematics;
-using UnityEngine.UI;
-using JetBrains.Annotations;
-using Unity.VisualScripting;
-using UnityEditor.UIElements;
-using System;
 
 public class PBFSimulation : MonoBehaviour
 {

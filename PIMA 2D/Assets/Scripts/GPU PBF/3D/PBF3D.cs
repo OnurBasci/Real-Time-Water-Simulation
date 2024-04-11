@@ -1,18 +1,17 @@
 using System.Collections;
 using System.Collections.Generic;
-using Unity.Collections;
 using Unity.Mathematics;
-using Unity.VisualScripting;
 using UnityEngine;
 
-public class PBF_GPU : MonoBehaviour
+public class PBF3D : MonoBehaviour
 {
     //This function handles the data to use it on a compute shader to execute the PBF simulation on the GPU
     public GameObject particleObject;
 
     [Header("Simulation parameters")]
     public int particleNumber;
-    public Vector2 particleDistances = new Vector2(1, 1);
+    public Vector3 boundaryLengths = new Vector3(5,10,15);
+    public Vector3 particleDistances = new Vector3(1, 1, 1);
     public float particleRadius = 1f;
     public float collisionDamping = 0.9f;
     public float gravity = -9.8f;
@@ -38,10 +37,11 @@ public class PBF_GPU : MonoBehaviour
 
     private List<GameObject> particlesObjects = new List<GameObject>();
 
-    private Vector2 horizontalBoundaries = new Vector2(0, 10);
-    private Vector2 verticalBoundaries = new Vector2(0, 10);
-    private float2[] positions;
-    private float2[] velocities;
+    private Vector3 horizontalBoundaries = new Vector2(0, 10);
+    private Vector3 verticalBoundaries = new Vector2(0, 10);
+    private Vector3 depthBoundaries = new Vector2(0, 10);
+    private float3[] positions;
+    private float3[] velocities;
 
     //Buffers
     ComputeBuffer positionsBuffer;
@@ -56,13 +56,13 @@ public class PBF_GPU : MonoBehaviour
 
     // Kernel IDs
     const int externalForcesKernel = 0;
-    const int spatialHashKernel = 1;
-    const int findNeighborKernel = 2;
-    const int densityKernel = 3;
-    const int lamdaKenrel = 4;
-    const int deltaPKernel = 5;
-    const int updatePredictedKernel = 6;
-    const int updatePositionKernel = 7;
+    //const int spatialHashKernel = 1;
+    //const int findNeighborKernel = 2;
+    //const int densityKernel = 3;
+    //const int lamdaKenrel = 4;
+    //const int deltaPKernel = 5;
+    //const int updatePredictedKernel = 6;
+    const int updatePositionKernel = 1;
 
     ComputeBuffer spatialOffsetBuffer; //contains the sorted hash values corresponding the indice in the spacialIndice array
     ComputeBuffer spatialIndiciesBuffer; //Gives the start position of the particle in the same block
@@ -71,50 +71,47 @@ public class PBF_GPU : MonoBehaviour
 
     public void Start()
     {
-        positions = new float2[particleNumber];
-        velocities = new float2[particleNumber];
+        positions = new float3[particleNumber];
+        velocities = new float3[particleNumber];
 
         deltaq *= smoothingRadius;
 
         //set the boundaries as camera boundaries
-        Vector3 cameraCenter = Camera.main.transform.position;
-        float halfHeight = Camera.main.orthographicSize;
-        float halfWidth = Camera.main.aspect * halfHeight;
-        verticalBoundaries = new Vector2(cameraCenter.y - halfHeight, cameraCenter.y + halfHeight);
-        horizontalBoundaries = new Vector2(cameraCenter.x - halfWidth, cameraCenter.x + halfWidth);
+        horizontalBoundaries = new Vector2(-boundaryLengths.x/2, boundaryLengths.x/2);
+        verticalBoundaries = new Vector2(-boundaryLengths.y / 2, boundaryLengths.y / 2);
+        depthBoundaries = new Vector2(-boundaryLengths.z / 2, boundaryLengths.z / 2);
 
-        if (spawnType == SpawnType.UNIFORM)
-            spawnParticles();
-        else if (spawnType == SpawnType.RANDOM)
-            spawnRandomParticles();
+        /*if (spawnType == SpawnType.UNIFORM)
+            spawnParticles();*/
+        spawnRandomParticles();
 
 
         // Create buffers
-        positionsBuffer = ComputeHelper.CreateStructuredBuffer<float2>(particleNumber);
-        predictedPositionsBuffer = ComputeHelper.CreateStructuredBuffer<float2>(particleNumber);
-        velocitiesBuffer = ComputeHelper.CreateStructuredBuffer<float2>(particleNumber);
+        positionsBuffer = ComputeHelper.CreateStructuredBuffer<float3>(particleNumber);
+        predictedPositionsBuffer = ComputeHelper.CreateStructuredBuffer<float3>(particleNumber);
+        velocitiesBuffer = ComputeHelper.CreateStructuredBuffer<float3>(particleNumber);
         densitiesBuffer = ComputeHelper.CreateStructuredBuffer<float>(particleNumber);
         spatialIndiciesBuffer = ComputeHelper.CreateStructuredBuffer<uint3>(particleNumber);
         spatialOffsetBuffer = ComputeHelper.CreateStructuredBuffer<uint>(particleNumber);
         particleNeighborBuffer = ComputeHelper.CreateStructuredBuffer<uint>(particleNumber * particleNumber);
         neighborCounterBuffer = ComputeHelper.CreateStructuredBuffer<uint>(particleNumber);
         lambdasBuffer = ComputeHelper.CreateStructuredBuffer<float>(particleNumber);
-        deltaPsBuffer = ComputeHelper.CreateStructuredBuffer<float2>(particleNumber);
+        deltaPsBuffer = ComputeHelper.CreateStructuredBuffer<float3>(particleNumber);
 
         setBufferData();
 
         //Set the data to the buffer
         ComputeHelper.SetBuffer(compute, positionsBuffer, "Positions", externalForcesKernel, updatePositionKernel);
-        ComputeHelper.SetBuffer(compute, predictedPositionsBuffer, "PredictedPositions", externalForcesKernel, spatialHashKernel, 
-            updatePositionKernel, densityKernel, findNeighborKernel, lamdaKenrel, deltaPKernel, updatePredictedKernel);
+        ComputeHelper.SetBuffer(compute, predictedPositionsBuffer, "PredictedPositions", externalForcesKernel,
+            updatePositionKernel);
         ComputeHelper.SetBuffer(compute, velocitiesBuffer, "Velocities", externalForcesKernel, updatePositionKernel);
-        ComputeHelper.SetBuffer(compute, densitiesBuffer, "Densities", densityKernel, lamdaKenrel);
-        ComputeHelper.SetBuffer(compute, spatialIndiciesBuffer, "SpatialIndices", spatialHashKernel, densityKernel, findNeighborKernel);
-        ComputeHelper.SetBuffer(compute, spatialOffsetBuffer, "SpatialOffsets", spatialHashKernel, densityKernel, findNeighborKernel);
-        ComputeHelper.SetBuffer(compute, particleNeighborBuffer, "particleNeighbors", findNeighborKernel, densityKernel, lamdaKenrel, deltaPKernel, updatePositionKernel);
-        ComputeHelper.SetBuffer(compute, neighborCounterBuffer, "neighborCounter", findNeighborKernel, densityKernel, lamdaKenrel, deltaPKernel, updatePositionKernel);
-        ComputeHelper.SetBuffer(compute, lambdasBuffer, "lamdas", lamdaKenrel, deltaPKernel);
-        ComputeHelper.SetBuffer(compute, deltaPsBuffer, "deltaPs", deltaPKernel, updatePredictedKernel);
+        ComputeHelper.SetBuffer(compute, densitiesBuffer, "Densities");
+        ComputeHelper.SetBuffer(compute, spatialIndiciesBuffer, "SpatialIndices");
+        ComputeHelper.SetBuffer(compute, spatialOffsetBuffer, "SpatialOffsets");
+        ComputeHelper.SetBuffer(compute, particleNeighborBuffer, "particleNeighbors",updatePositionKernel);
+        ComputeHelper.SetBuffer(compute, neighborCounterBuffer, "neighborCounter",updatePositionKernel);
+        ComputeHelper.SetBuffer(compute, lambdasBuffer, "lamdas");
+        ComputeHelper.SetBuffer(compute, deltaPsBuffer, "deltaPs");
 
         //Set the constants to the buffer
         UpdateSetting();
@@ -141,7 +138,7 @@ public class PBF_GPU : MonoBehaviour
         //float startTime = Time.realtimeSinceStartup;
         for (int i = 0; i < particleNumber; i++)
         {
-            particlesObjects[i].transform.position = new Vector3(positions[i].x, positions[i].y, 0);
+            particlesObjects[i].transform.position = new Vector3(positions[i].x, positions[i].y, positions[i].z);
         }
         //Debug.Log("The time passed for moving particles " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
     }
@@ -151,19 +148,20 @@ public class PBF_GPU : MonoBehaviour
     public void runSimulationStep()
     {
         ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: externalForcesKernel);
-        ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: spatialHashKernel);
+        /*ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: spatialHashKernel);
         gpuSort.SortAndCalculateOffsets();
         ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: findNeighborKernel);
-        for(int simulationIter =0; simulationIter < solverIteration; simulationIter ++)
+        for (int simulationIter = 0; simulationIter < solverIteration; simulationIter++)
         {
             ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: densityKernel);
             ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: lamdaKenrel);
             ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: deltaPKernel);
             ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: updatePredictedKernel);
-        }
+        }*/
         ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: updatePositionKernel);
     }
 
+    /*
     private void spawnParticles()
     {
 
@@ -189,21 +187,23 @@ public class PBF_GPU : MonoBehaviour
         }
 
     }
+    */
 
     public void spawnRandomParticles()
     {
-        Vector2 randomSpawnPos;
+        Vector3 randomSpawnPos;
         for (int i = 0; i < particleNumber; i++)
         {
 
-            randomSpawnPos = new Vector3(UnityEngine.Random.Range(horizontalBoundaries.x, horizontalBoundaries.y), UnityEngine.Random.Range(verticalBoundaries.x, verticalBoundaries.y));
+            randomSpawnPos = new Vector3(UnityEngine.Random.Range(horizontalBoundaries.x, horizontalBoundaries.y),
+                UnityEngine.Random.Range(verticalBoundaries.x, verticalBoundaries.y), UnityEngine.Random.Range(depthBoundaries.x, depthBoundaries.y));
             GameObject p1 = Instantiate(particleObject, randomSpawnPos, Quaternion.identity);
             p1.transform.localScale = new Vector3(particleRadius * 2, particleRadius * 2, particleRadius * 2);
             particlesObjects.Add(p1);
 
             //intialize particle data
             positions[i] = randomSpawnPos;
-            velocities[i] = float2.zero;
+            velocities[i] = float3.zero;
         }
     }
 
@@ -217,13 +217,15 @@ public class PBF_GPU : MonoBehaviour
         compute.SetFloat("verticalBoundariesUpper", verticalBoundaries.y);
         compute.SetFloat("horizontalBoundariesLeft", horizontalBoundaries.x);
         compute.SetFloat("horizontalBoundariesRight", horizontalBoundaries.y);
+        compute.SetFloat("depthBoundariesFront", depthBoundaries.x);
+        compute.SetFloat("depthBoundariesBack", depthBoundaries.y);
         compute.SetFloat("particleRadius", particleRadius);
         compute.SetFloat("smoothingRadius", smoothingRadius);
         compute.SetFloat("targetDensity", density);
         compute.SetFloat("surfaceTensionParam1", k);
         compute.SetFloat("surfaceTensionParam2", deltaq);
         compute.SetFloat("viscocityCoef", viscocityCoef);
-        compute.SetVector("interactionInputPoint", new Vector2(0,0));
+        compute.SetVector("interactionInputPoint", new Vector2(0, 0));
         compute.SetFloat("interactionInputStrength", 0);
         compute.SetFloat("interactionInputRadius", 0);
     }
@@ -258,20 +260,17 @@ public class PBF_GPU : MonoBehaviour
         velocitiesBuffer.SetData(velocities);
     }
 
-    private void clearNeighbors()
-    {
-        ComputeHelper.Release(particleNeighborBuffer, neighborCounterBuffer);
-
-        particleNeighborBuffer = ComputeHelper.CreateStructuredBuffer<int>(particleNumber * particleNumber);
-        neighborCounterBuffer = ComputeHelper.CreateStructuredBuffer<int>(particleNumber);
-
-        ComputeHelper.SetBuffer(compute, particleNeighborBuffer, "particleNeighbors", findNeighborKernel);
-        ComputeHelper.SetBuffer(compute, neighborCounterBuffer, "neighborCounter", findNeighborKernel);
-    }
 
     void OnDestroy()
     {
-        ComputeHelper.Release(positionsBuffer, predictedPositionsBuffer, velocitiesBuffer, densitiesBuffer, 
+        ComputeHelper.Release(positionsBuffer, predictedPositionsBuffer, velocitiesBuffer, densitiesBuffer,
             spatialIndiciesBuffer, spatialOffsetBuffer, neighborCounterBuffer, particleNeighborBuffer, lambdasBuffer, deltaPsBuffer);
+    }
+
+    void OnDrawGizmosSelected()
+    {
+        // Draw a cube to show the borders
+        Gizmos.color = new Color(0.2f, 0.2f, 0.2f, 0.5f);
+        Gizmos.DrawCube(Vector3.zero, new Vector3(boundaryLengths.x, boundaryLengths.y, boundaryLengths.z));
     }
 }
