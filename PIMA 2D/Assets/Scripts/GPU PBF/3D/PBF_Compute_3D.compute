@@ -1,0 +1,410 @@
+#pragma kernel ExternalForces
+#pragma kernel UpdateSpatialHash
+#pragma kernel FindNeighbors;
+#pragma kernel CalculateDensities
+#pragma kernel CalculateLamdas
+#pragma kernel CalculateDeltaP
+#pragma kernel UpdatePredictedPosition
+#pragma kernel UpdatePositions
+
+// Includes
+#include "./FluidMaths3D.hlsl"
+#include "./SpatialHash3D.hlsl"
+
+static const int NumThreads = 64;
+
+// Buffers
+RWStructuredBuffer<float3> Positions;
+RWStructuredBuffer<float3> PredictedPositions;
+RWStructuredBuffer<float3> Velocities;
+RWStructuredBuffer<float> Densities;
+RWStructuredBuffer<uint3> SpatialIndices; // used for spatial hashing
+RWStructuredBuffer<uint> SpatialOffsets; // used for spatial hashing
+RWStructuredBuffer<float> lamdas;
+RWStructuredBuffer<float3> deltaPs;
+RWStructuredBuffer<uint> particleNeighbors; //This unflatten structure contains the neigbors of each particle
+RWStructuredBuffer<uint> neighborCounter; //this structure contains how many neighbor each particle contains
+
+
+//Setting
+const float gravity;
+const uint numParticle;
+const float deltaTime;
+const float collisionDamping;
+const float verticalBoundariesUpper;
+const float verticalBoundariesLower;
+const float horizontalBoundariesRight;
+const float horizontalBoundariesLeft;
+const float depthBoundariesBack;
+const float depthBoundariesFront;
+const float particleRadius;
+const float smoothingRadius;
+const float targetDensity;
+const float constraintForce;
+const float surfaceTensionParam1;
+const float surfaceTensionParam2;
+const float viscocityCoef;
+const float2 interactionInputPoint;
+const float interactionInputStrength;
+const float interactionInputRadius;
+
+float3 ExternalForces(float3 pos, float3 velocity)
+{
+	// Gravity
+	float3 gravityAccel = float3(0, gravity,0);
+	
+	// Input interactions modify gravity
+	/*
+	if (interactionInputStrength != 0) {
+		float2 inputPointOffset = interactionInputPoint - pos;
+		float sqrDst = dot(inputPointOffset, inputPointOffset);
+		if (sqrDst < interactionInputRadius * interactionInputRadius)
+		{
+			float dst = sqrt(sqrDst);
+			float edgeT = (dst / interactionInputRadius);
+			float centreT = 1 - edgeT;
+			float2 dirToCentre = inputPointOffset / dst;
+
+			float gravityWeight = 1 - (centreT * saturate(interactionInputStrength / 10));
+			float2 accel = gravityAccel * gravityWeight + dirToCentre * centreT * interactionInputStrength;
+			accel -= velocity * centreT;
+			return accel;
+		}
+	}
+	*/
+
+	return gravityAccel;
+}
+
+
+void handleCollision(uint particleIndex)
+{
+	//Vertical Boundaries
+	if(Positions[particleIndex].y - particleRadius < verticalBoundariesLower && Velocities[particleIndex].y < 0)
+	{
+		Velocities[particleIndex] = float3(Velocities[particleIndex].x, -Velocities[particleIndex].y * collisionDamping, Velocities[particleIndex].z);
+		Positions[particleIndex] = float3(Positions[particleIndex].x, verticalBoundariesLower + particleRadius, Positions[particleIndex].z);
+	}
+	if(Positions[particleIndex].y + particleRadius > verticalBoundariesUpper && Velocities[particleIndex].y > 0)
+	{
+		Velocities[particleIndex] = float3(Velocities[particleIndex].x, -Velocities[particleIndex].y * collisionDamping, Velocities[particleIndex].z);
+		Positions[particleIndex] = float3(Positions[particleIndex].x, verticalBoundariesUpper - particleRadius, Positions[particleIndex].z);
+	}
+	//horizontal boundaries
+	if(Positions[particleIndex].x - particleRadius < horizontalBoundariesLeft && Velocities[particleIndex].x < 0)
+	{
+		Velocities[particleIndex] = float3(-Velocities[particleIndex].x * collisionDamping, Velocities[particleIndex].y, Velocities[particleIndex].z);
+		Positions[particleIndex] = float3(horizontalBoundariesLeft, Positions[particleIndex].y, Positions[particleIndex].z);
+	}
+	if(Positions[particleIndex].x + particleRadius > horizontalBoundariesRight && Velocities[particleIndex].x > 0)
+	{
+		Velocities[particleIndex] = float3(-Velocities[particleIndex].x * collisionDamping, Velocities[particleIndex].y, Velocities[particleIndex].z);
+		Positions[particleIndex] = float3(horizontalBoundariesRight, Positions[particleIndex].y, Positions[particleIndex].z);
+	}
+	//depth boundaries
+	if(Positions[particleIndex].z - particleRadius < depthBoundariesFront && Velocities[particleIndex].z < 0)
+	{
+		Velocities[particleIndex] = float3(Velocities[particleIndex].x, Velocities[particleIndex].y, -Velocities[particleIndex].z * collisionDamping);
+		Positions[particleIndex] = float3(Positions[particleIndex].x, Positions[particleIndex].y, depthBoundariesFront);
+	}
+	if(Positions[particleIndex].z + particleRadius > depthBoundariesBack && Velocities[particleIndex].z > 0)
+	{
+		Velocities[particleIndex] = float3(Velocities[particleIndex].x, Velocities[particleIndex].y, -Velocities[particleIndex].z*collisionDamping);
+		Positions[particleIndex] = float3(Positions[particleIndex].x, Positions[particleIndex].y, depthBoundariesBack);
+	}
+}
+
+float CalculateDensity(uint pi)
+{
+	float density = 0;
+	float sqrRadius = smoothingRadius * smoothingRadius;
+
+	for(uint j = 0; j < neighborCounter[pi]; j++)
+	{
+		int pj = particleNeighbors[pi * numParticle + j];
+		float3 offsetToNeighbour = PredictedPositions[pj] - PredictedPositions[pi];
+
+		float sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
+
+		// Skip if not within radius
+		if (sqrDstToNeighbour > sqrRadius) continue;
+
+		// Calculate density and near density
+		float dst = sqrt(sqrDstToNeighbour);
+		density += SmoothingKernelPoly6(dst, smoothingRadius);
+	}
+
+    return density;
+}
+
+float constraintFunction(uint pi)
+{
+	return (Densities[pi] / targetDensity) - 1;
+}
+
+//this function is tocalculate the gradient of the constraint function
+//of the particle i by the neighbor k
+float constraintGradient(int i, int k)
+{
+    float partialDeriv = 0;
+    float dist = 0;
+	float sqrRadius = smoothingRadius * smoothingRadius;
+
+    if (k != i)
+    {
+        float3 offsetToNeighbour = PredictedPositions[i] - PredictedPositions[k];
+		float sqrDist = dot(offsetToNeighbour, offsetToNeighbour);
+
+		// Skip if not within radius
+		if (sqrDist > sqrRadius) continue;
+
+		float dst = sqrt(sqrDist);
+        partialDeriv = -DerivativeSpikyPow3(dst, smoothingRadius);
+    }
+	else
+	{
+		for(uint j = 0; j < neighborCounter[i]; j ++)
+		{
+			int pj = particleNeighbors[i * numParticle + j];
+			float3 offsetToNeighbour = PredictedPositions[pj] - PredictedPositions[i];
+
+			float sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
+
+			// Skip if not within radius
+			if (sqrDstToNeighbour > sqrRadius) continue;
+			
+			//update the derivative
+			float dst = sqrt(sqrDstToNeighbour);
+			partialDeriv += DerivativeSpikyPow3(dst, smoothingRadius);
+		}
+	}
+
+    return partialDeriv / targetDensity;
+}
+
+[numthreads(NumThreads,1,1)]
+void ExternalForces(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= numParticle) return;
+
+	// External forces (gravity and input interaction)
+	Velocities[id.x] += ExternalForces(Positions[id.x], Velocities[id.x]) * deltaTime;
+
+	// Predict
+	PredictedPositions[id.x] = Positions[id.x] + Velocities[id.x] * deltaTime;
+}
+
+
+
+[numthreads(NumThreads,1,1)]
+void UpdateSpatialHash (uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= numParticle) return;
+
+	// Reset offsets
+	SpatialOffsets[id.x] = numParticle;
+	// Update index buffer
+	uint index = id.x;
+	int3 cell = GetCell3D(PredictedPositions[index], smoothingRadius);
+	uint hash = HashCell3D(cell);
+	uint key = KeyFromHash(hash, numParticle);
+	SpatialIndices[id.x] = uint3(index, hash, key);
+}
+
+
+[numthreads(NumThreads,1,1)]
+void CalculateDensities (uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= numParticle) return;
+
+	Densities[id.x] = CalculateDensity(id.x);
+}
+
+
+
+[numthreads(NumThreads, 1,1)]
+void FindNeighbors(uint3 id : SV_DispatchThreadID)
+{
+	if(id.x >= numParticle) return;
+
+	float3 pos = PredictedPositions[id.x];
+
+	int3 originCell = GetCell3D(pos, smoothingRadius);
+	float sqrRadius = smoothingRadius * smoothingRadius;
+
+	//reinitialize the array
+	neighborCounter[id.x] = 0;
+
+	// Neighbour search
+	for (int i = 0; i < 9; i++)
+	{
+		uint hash = HashCell3D(originCell + offsets3D[i]);
+		uint key = KeyFromHash(hash, numParticle);
+		uint currIndex = SpatialOffsets[key];
+
+		while (currIndex < numParticle)
+		{
+			uint3 indexData = SpatialIndices[currIndex];
+			currIndex++;
+			// Exit if no longer looking at correct bin
+			if (indexData[2] != key) break;
+			// Skip if hash does not match
+			if (indexData[1] != hash) continue;
+
+			uint neighbourIndex = indexData[0];
+
+			float3 neighbourPos = PredictedPositions[neighbourIndex];
+			float3 offsetToNeighbour = neighbourPos - pos;
+			float sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
+
+			// Skip if not within radius
+			if (sqrDstToNeighbour > sqrRadius) continue;
+
+			particleNeighbors[id.x * numParticle + neighborCounter[id.x]] = neighbourIndex;
+			neighborCounter[id.x] += 1;
+		}
+	}
+}
+
+
+[numthreads(NumThreads,1,1)]
+void CalculateLamdas (uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= numParticle) return;
+
+	float denominator = 0;
+	float constraintGradient = 0;
+	uint i = id.x;
+
+	float sqrRadius = smoothingRadius * smoothingRadius;
+
+	for(uint j = 0; j < neighborCounter[i]; j++)
+	{
+		uint k = particleNeighbors[i * numParticle + j];
+
+		//calculate constraint gradient
+		float dist = 0;
+
+		if (k != i)
+		{
+			float3 offsetToNeighbour = PredictedPositions[i] - PredictedPositions[k];
+			float sqrDist = dot(offsetToNeighbour, offsetToNeighbour);
+
+			// Skip if not within radius
+			if (sqrDist > sqrRadius) continue;
+
+			float dst = sqrt(sqrDist);
+			constraintGradient = -DerivativeSpikyPow3(dst, smoothingRadius);
+		}
+		else
+		{
+			for(uint j = 0; j < neighborCounter[i]; j ++)
+			{
+				int pj = particleNeighbors[i * numParticle + j];
+				float3 offsetToNeighbour = PredictedPositions[pj] - PredictedPositions[i];
+
+				float sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
+
+				// Skip if not within radius
+				if (sqrDstToNeighbour > sqrRadius) continue;
+			
+				//update the derivative
+				float dst = sqrt(sqrDstToNeighbour);
+				constraintGradient += DerivativeSpikyPow3(dst, smoothingRadius);
+			}
+		}
+
+		denominator += pow(abs(constraintGradient), 2);
+	}
+
+	lamdas[id.x] = -constraintFunction(id.x)/(denominator + constraintForce);
+}
+
+
+[numthreads(NumThreads,1,1)]
+void CalculateDeltaP (uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= numParticle) return;
+
+	float3 deltaPi = float3(0,0,0);
+	uint pj;
+	uint pi = id.x;
+	float Scorr = 0;
+
+	float sqrRadius = smoothingRadius * smoothingRadius;
+
+	for(uint j = 0; j < neighborCounter[pi]; j ++)
+	{
+		pj = particleNeighbors[pi * numParticle + j];
+
+		//return if the neighbor is the same particle
+		if(pi == pj) continue;
+
+		float3 offsetToNeighbour = PredictedPositions[pj] - PredictedPositions[pi];
+
+		float sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
+
+		// Skip if not within radius
+		if (sqrDstToNeighbour > sqrRadius) continue;
+			
+		//update the derivative
+		float dst = sqrt(sqrDstToNeighbour);
+		float3 dirToNeighbour = dst > 0 ? offsetToNeighbour / dst : float3(0, 1, 0);
+
+		//For surface tension
+		Scorr = -surfaceTensionParam1 * pow(SmoothingKernelPoly6(dst, smoothingRadius) / SmoothingKernelPoly6(surfaceTensionParam2, smoothingRadius), 4);
+
+		deltaPi += (lamdas[pi] + lamdas[pj] + Scorr) * DerivativeSpikyPow3(dst, smoothingRadius) * dirToNeighbour;
+	}
+	
+	deltaPs[id.x] = deltaPi/targetDensity;
+}
+
+
+[numthreads(NumThreads, 1, 1)]
+void UpdatePredictedPosition(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= numParticle) return;
+
+	PredictedPositions[id.x] += deltaPs[id.x] * deltaTime;
+}
+
+
+[numthreads(NumThreads, 1, 1)]
+void UpdatePositions(uint3 id : SV_DispatchThreadID)
+{
+	if (id.x >= numParticle) return;
+
+	Velocities[id.x] = (PredictedPositions[id.x] - Positions[id.x]) / deltaTime;
+
+	//Add viscocity
+	int pj;
+    float3 sum = float3(0,0,0);
+    float3 vij;
+    float dist;
+
+	float sqrRadius = smoothingRadius * smoothingRadius;
+    for(uint j = 0; j < neighborCounter[id.x]; j++)
+    {
+        pj = particleNeighbors[id.x * numParticle + j];
+        
+		float3 offsetToNeighbour = PredictedPositions[pj] - PredictedPositions[id.x];
+
+		float sqrDstToNeighbour = dot(offsetToNeighbour, offsetToNeighbour);
+
+		// Skip if not within radius
+		if (sqrDstToNeighbour > sqrRadius) continue;
+			
+		//update the derivative
+		float dst = sqrt(sqrDstToNeighbour);
+
+        vij = Velocities[pj] - Velocities[id.x];
+        sum += vij * SmoothingKernelPoly6(dst, smoothingRadius);
+    }
+    Velocities[id.x] += viscocityCoef * sum;
+	
+
+	//update Positions
+	Positions[id.x] = PredictedPositions[id.x];
+	handleCollision(id.x);
+}
