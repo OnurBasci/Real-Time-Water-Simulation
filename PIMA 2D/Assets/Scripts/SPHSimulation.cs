@@ -1,3 +1,4 @@
+using Mono.Cecil.Cil;
 using System;
 using System.Collections.Generic;
 using Unity.Mathematics;
@@ -9,6 +10,7 @@ public class SPHSimulation : MonoBehaviour
 
     public float gravity = -9.81f;
     public float density = 1;
+    public float mass = 1;
 
     public int particleNumber = 100;
     public float particleRadius = 0.5f;
@@ -95,7 +97,7 @@ public class SPHSimulation : MonoBehaviour
             GameObject p1 = Instantiate(particleObject, spawnPos, Quaternion.identity);
             p1.transform.localScale = new Vector3(particleRadius * 2, particleRadius * 2, particleRadius * 2);
             particlesObjects.Add(p1);
-            particles[i] = new Particle(spawnPos, new Vector3(0, 0, 0), 1, particleRadius);
+            particles[i] = new Particle(spawnPos, new Vector3(0, 0, 0), mass, particleRadius);
         }
 
     }
@@ -110,7 +112,7 @@ public class SPHSimulation : MonoBehaviour
             GameObject p1 = Instantiate(particleObject, randomSpawnPos, Quaternion.identity);
             p1.transform.localScale = new Vector3(particleRadius * 2, particleRadius * 2, particleRadius * 2);
             particlesObjects.Add(p1);
-            particles[i] = new Particle(randomSpawnPos, new Vector3(0, 0, 0), 1, particleRadius);
+            particles[i] = new Particle(randomSpawnPos, new Vector3(0, 0, 0), mass, particleRadius);
         }
     }
 
@@ -132,6 +134,8 @@ public class SPHSimulation : MonoBehaviour
         {
             densities[i] = calculateDensity(predictedPositions[i]);
         }
+
+        //Debug.Log("densities are " + string.Join(" ", densities));
 
         moveParticles();
     }
@@ -194,10 +198,11 @@ public class SPHSimulation : MonoBehaviour
     {
         Vector3 f_pressure = Vector3.zero;
         Vector3 dir;
-        float press_i = K_temp * (densities[particleIndex] - density);
+        float press_i = math.max(K_temp * (densities[particleIndex] - density),0);
         float press_j, dist;
 
-        Particle pi = particles[particleIndex];
+        Debug.Log(press_i);
+
         Particle pj;
 
         for (int j = 0; j < particleNumber; j++)
@@ -209,11 +214,11 @@ public class SPHSimulation : MonoBehaviour
 
             dist = (predictedPositions[particleIndex] - predictedPositions[j]).magnitude;
 
-            dir = dist == 0 ? getRandomDirection() : (predictedPositions[j] - predictedPositions[particleIndex]) / dist;
-            press_j = K_temp * (densities[j] - density);
+            dir = dist == 0 ? getRandomDirection() : (predictedPositions[particleIndex] - predictedPositions[j]) / dist;
+            press_j = math.max(K_temp * (densities[j] - density),0);
             f_pressure += (pj.mass * (press_i + press_j) / (2 * densities[j])) * gradientSpikyKernel(dist, smoothingRadius) * dir;
         }
-        return -f_pressure;
+        return -(particles[particleIndex].mass / densities[particleIndex]) * f_pressure;
     }
 
     private Vector3 addViscocityForce(int particleIndex)
@@ -245,7 +250,7 @@ public class SPHSimulation : MonoBehaviour
 
     private Vector3 addExternalForces()
     {
-        return new Vector3(0, density * gravity, 0);
+        return new Vector3(0, -mass*gravity, 0);
     }
 
     private float calculateDensity(Vector3 r)

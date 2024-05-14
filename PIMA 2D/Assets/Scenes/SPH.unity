@@ -272,19 +272,19 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   particleObject: {fileID: 7815605973295585089, guid: 98dbef7931cefe94ead96d73055f2a92, type: 3}
-  gravity: 0
+  gravity: 9.8
   density: 8
   particleNumber: 600
   particleRadius: 0.2
   particleHorizontalDistance: 1
   particleVerticalDistance: 0.5
-  smoothingRadius: 5
+  smoothingRadius: 3
   K_temp: 1
   viscosityCoeff: 0
   collisionDamping: 0.7
   horizontalBoundaries: {x: -10, y: 10}
   verticalBoundaries: {x: -10, y: 10}
-  spawnType: 0
+  spawnType: 1
 --- !u!4 &773940262
 Transform:
   m_ObjectHideFlags: 0
