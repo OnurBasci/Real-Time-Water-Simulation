@@ -158,7 +158,7 @@ public class PBF_GPU : MonoBehaviour
         ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: spatialHashKernel);
         gpuSort.SortAndCalculateOffsets();
         ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: findNeighborKernel);
-        for(int simulationIter =0; simulationIter < solverIteration; simulationIter ++)
+        for (int simulationIter =0; simulationIter < solverIteration; simulationIter ++)
         {
             ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: densityKernel);
             ComputeHelper.Dispatch(compute, particleNumber, kernelIndex: lamdaKenrel);

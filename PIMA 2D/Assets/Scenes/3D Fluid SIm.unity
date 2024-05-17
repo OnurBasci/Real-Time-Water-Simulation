@@ -313,27 +313,31 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9ed2af3378036be45b334f85c91d6031, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  gpuInstancing: 0
+  particleObject: {fileID: 8736929286616053114, guid: d8a2615b53e31bc43bf0e93125eef2ff, type: 3}
   particleMesh: {fileID: 10207, guid: 0000000000000000e000000000000000, type: 0}
   particleMaterial: {fileID: 2100000, guid: 3181daa9245e2a441a4c5877e811293f, type: 2}
-  particleNumber: 100
-  boundaryLengths: {x: 5, y: 5, z: 5}
+  particleNumber: 4000
+  boundaryLengths: {x: 10, y: 6.75, z: 10}
   particleDistances: {x: 1, y: 1, z: 1}
-  particleRadius: 0.1
+  particleRadius: 0.2
   collisionDamping: 0.9
   gravity: -9.8
   particleMass: 1
-  density: 10
-  smoothingRadius: 5
+  density: 3
+  smoothingRadius: 1
   constraintForce: 0.01
-  solverIteration: 4
-  deltaTime: 0.016666668
-  spawnType: 0
+  solverIteration: 8
+  deltaTime: 0.016
+  spawnType: 1
   k: 0
   deltaq: 0.1
   viscocityCoef: 0.01
+  forceCoef: 1
   interactionStrength: 1
   interactionRadius: 5
   compute: {fileID: 7200000, guid: 0247b67bbaf8bb34b811f603a062bbdb, type: 3}
+  debug_particle_index: 1151
 --- !u!1 &1807995882
 GameObject:
   m_ObjectHideFlags: 0

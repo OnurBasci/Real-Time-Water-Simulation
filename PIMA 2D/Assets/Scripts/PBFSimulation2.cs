@@ -94,7 +94,7 @@ public class PBFSimulation2 : MonoBehaviour
         float startTime = Time.realtimeSinceStartup;
         //add external forces
         addExternalForces();
-        Debug.Log("The time passed for external force calculation " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
+        //Debug.Log("The time passed for external force calculation " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
         //Find neighbors
         startTime = Time.realtimeSinceStartup;
@@ -106,7 +106,7 @@ public class PBFSimulation2 : MonoBehaviour
         {
             findNeighbors();
         }
-        Debug.Log("The time passed for finding neighboors " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
+        //Debug.Log("The time passed for finding neighboors " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
         //calculate densities
         startTime = Time.realtimeSinceStartup;
@@ -115,7 +115,7 @@ public class PBFSimulation2 : MonoBehaviour
         {
             densities[i] = calculateDensity(i);
         }
-        Debug.Log("The time passed for density calculation " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
+        //Debug.Log("The time passed for density calculation " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
         startTime = Time.realtimeSinceStartup;
         for (int solveIteration = 0; solveIteration < solverIteration; solveIteration ++ )
@@ -132,7 +132,7 @@ public class PBFSimulation2 : MonoBehaviour
                 predictedPositions[i] += deltaPs[i]* deltaTime;
             }
         }
-        Debug.Log("The time passed for constraint solver " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
+        //Debug.Log("The time passed for constraint solver " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
         //update position and velocity
         for (int i = 0; i < particleNumber; i++)

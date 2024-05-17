@@ -1,4 +1,3 @@
-using System.Collections;
 using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEngine;
@@ -6,6 +5,8 @@ using UnityEngine;
 public class PBF3D : MonoBehaviour
 {
     //This function handles the data to use it on a compute shader to execute the PBF simulation on the GPU
+    public bool gpuInstancing = true;
+    public GameObject particleObject;
     public Mesh particleMesh;
     public Material particleMaterial;
 
@@ -28,13 +29,17 @@ public class PBF3D : MonoBehaviour
     public float deltaq = 0.1f;
     //Parameters for viscocity
     public float viscocityCoef = 0.01f;
+    public float forceCoef = 1; //temporary
     [Header("Mouse Interraction")]
     public float interactionStrength = 1;
     public float interactionRadius = 5;
 
     [Header("References")]
     public ComputeShader compute;
+    [Header("Boundary Particle parameters")] // Boundary particles are used for handling collisions they are particles that are stable
 
+
+    public int debug_particle_index = 5;
 
     private List<GameObject> particlesObjects = new List<GameObject>();
 
@@ -46,6 +51,7 @@ public class PBF3D : MonoBehaviour
     private uint[] spatialOffsets;
     private uint3[] spatialIndex;
     private uint[] particleNeighbors;
+    private uint[] neighborCounter;
     private float[] densities;
     private float[] lamdas;
     private float3[] deltaPs;
@@ -86,6 +92,7 @@ public class PBF3D : MonoBehaviour
         spatialOffsets = new uint[particleNumber];
         spatialIndex = new uint3[particleNumber];
         particleNeighbors = new uint[particleNumber*particleNumber];
+        neighborCounter = new uint[particleNumber];
         densities = new float[particleNumber];
         lamdas = new float[particleNumber];
         deltaPs = new float3[particleNumber];
@@ -102,9 +109,11 @@ public class PBF3D : MonoBehaviour
         verticalBoundaries = new Vector2(-boundaryLengths.y / 2, boundaryLengths.y / 2);
         depthBoundaries = new Vector2(-boundaryLengths.z / 2, boundaryLengths.z / 2);
 
-        /*if (spawnType == SpawnType.UNIFORM)
-            spawnParticles();*/
-        spawnRandomParticles();
+        if (spawnType == SpawnType.UNIFORM)
+            spawnUniformParticles();
+        else if(spawnType == SpawnType.RANDOM)
+            spawnRandomParticles();
+
 
 
         // Create buffers
@@ -144,7 +153,9 @@ public class PBF3D : MonoBehaviour
     public void Update()
     {
         //Check mouse interraction
-        checkMouseInterraction();
+        //checkMouseInterraction();
+
+        UpdateSetting();
 
         //Debug.Log(particleNumber);
         runSimulationStep();
@@ -152,26 +163,34 @@ public class PBF3D : MonoBehaviour
         //get back the position
         positionsBuffer.GetData(positions);
 
-        //deltaPsBuffer.GetData(deltaPs);
-        //Debug.Log("offsets " + string.Join(" ", positions));
+        neighborCounterBuffer.GetData(neighborCounter);
+        particleNeighborBuffer.GetData(particleNeighbors);
+
+        //debugNeighbors(debug_particle_index);
+
+
+        //debugDensities();
 
         //make the objects move
         //float startTime = Time.realtimeSinceStartup;
 
         //gpu instancing to update positions
 
+        //sphereCaracteristics = new Matrix4x4[particleNumber];
 
         for (int i = 0; i < particleNumber; i++)
         {
-            sphereCaracteristics[i].SetTRS(new Vector3(positions[i].x, positions[i].y, positions[i].z), Quaternion.identity, Vector3.one);
-            //sphereCaracteristics[i] = Matrix4x4.Translate(new Vector3(positions[i].x, positions[i].y, positions[i].z));
-            //particlesObjects[i].transform.position = new Vector3(positions[i].x, positions[i].y, positions[i].z);
+            if(gpuInstancing)
+                sphereCaracteristics[i].SetTRS(new Vector3(positions[i].x, positions[i].y, positions[i].z), Quaternion.identity, Vector3.one * particleRadius);
+            else
+                particlesObjects[i].transform.position = new Vector3(positions[i].x, positions[i].y, positions[i].z);
         }
         //Debug.Log("The time passed for moving particles " + (Time.realtimeSinceStartup - startTime) * 1000 + "ms");
 
-        //Debug.Log(sphereCaracteristics[0]);
-
-        Graphics.RenderMeshInstanced(_rp, particleMesh, 0, sphereCaracteristics);
+        
+        if(gpuInstancing)
+            Graphics.RenderMeshInstanced(_rp, particleMesh, 0, sphereCaracteristics);
+        
     }
 
 
@@ -228,9 +247,12 @@ public class PBF3D : MonoBehaviour
 
             randomSpawnPos = new Vector3(UnityEngine.Random.Range(horizontalBoundaries.x, horizontalBoundaries.y),
                 UnityEngine.Random.Range(verticalBoundaries.x, verticalBoundaries.y), UnityEngine.Random.Range(depthBoundaries.x, depthBoundaries.y));
-            //GameObject p1 = Instantiate(particleObject, randomSpawnPos, Quaternion.identity);
-            //p1.transform.localScale = new Vector3(particleRadius * 2, particleRadius * 2, particleRadius * 2);
-            //particlesObjects.Add(p1);
+            if(!gpuInstancing)
+            {
+                GameObject p1 = Instantiate(particleObject, randomSpawnPos, Quaternion.identity);
+                p1.transform.localScale = new Vector3(particleRadius, particleRadius, particleRadius);
+                particlesObjects.Add(p1);
+            }
 
             //intialize particle data
             positions[i] = randomSpawnPos;
@@ -238,8 +260,81 @@ public class PBF3D : MonoBehaviour
         }
     }
 
+    public void spawnUniformParticles()
+    {
+        int thirdRoot = (int)math.pow(particleNumber, 1f / 3f);
+        int restingParticleOnLastSquare = (particleNumber % (thirdRoot * thirdRoot * thirdRoot)) / thirdRoot;
+        int numberOfRestingParticles = particleNumber % thirdRoot;
+
+        float horizontalStep = (horizontalBoundaries.y - horizontalBoundaries.x) / thirdRoot;
+        float verticalStep = (verticalBoundaries.y - verticalBoundaries.x) / thirdRoot;
+        float depthStep = (depthBoundaries.y - depthBoundaries.x) / thirdRoot;
+
+
+        int particleIndex = 0;
+        for(int i = 0; i < thirdRoot; i++)
+        {
+            for(int j = 0; j < thirdRoot; j++)
+            {
+                for(int k = 0; k < thirdRoot; k++)
+                {
+                    Vector3 spawnPos = new Vector3(horizontalBoundaries.x + i * horizontalStep, verticalBoundaries.x + j * verticalStep, depthBoundaries.x + k * depthStep);
+
+                    GameObject p1 = Instantiate(particleObject, spawnPos, Quaternion.identity);
+                    p1.transform.localScale = new Vector3(particleRadius, particleRadius, particleRadius);
+                    particlesObjects.Add(p1);
+
+                    //intialize particle data
+                    positions[particleIndex] = spawnPos;
+                    velocities[particleIndex] = float3.zero;
+
+                    particleIndex++;
+                }
+            }
+        }
+
+        //fill the rest
+        for(int j = 0; j < restingParticleOnLastSquare; j++)
+        {
+            for(int k = 0; k < thirdRoot; k ++)
+            {
+                Vector3 spawnPos = new Vector3(horizontalBoundaries.x + thirdRoot * horizontalStep, verticalBoundaries.x + j * verticalStep, depthBoundaries.x + k * depthStep);
+
+                GameObject p1 = Instantiate(particleObject, spawnPos, Quaternion.identity);
+                p1.transform.localScale = new Vector3(particleRadius, particleRadius, particleRadius);
+                particlesObjects.Add(p1);
+
+                //intialize particle data
+                positions[particleIndex] = spawnPos;
+                velocities[particleIndex] = float3.zero;
+
+                particleIndex++;
+            }
+        }
+
+        for(int k = 0; k < numberOfRestingParticles; k ++)
+        {
+            Vector3 spawnPos = new Vector3(horizontalBoundaries.x + thirdRoot * horizontalStep, verticalBoundaries.x + thirdRoot * verticalStep, depthBoundaries.x + k * depthStep);
+
+            GameObject p1 = Instantiate(particleObject, spawnPos, Quaternion.identity);
+            p1.transform.localScale = new Vector3(particleRadius, particleRadius, particleRadius);
+            particlesObjects.Add(p1);
+
+            //intialize particle data
+            positions[particleIndex] = spawnPos;
+            velocities[particleIndex] = float3.zero;
+
+            particleIndex++;
+        }
+
+    }
+
     public void UpdateSetting()
     {
+        horizontalBoundaries = new Vector2(-boundaryLengths.x / 2, boundaryLengths.x / 2);
+        verticalBoundaries = new Vector2(-boundaryLengths.y / 2, boundaryLengths.y / 2);
+        depthBoundaries = new Vector2(-boundaryLengths.z / 2, boundaryLengths.z / 2);
+
         compute.SetFloat("gravity", gravity);
         compute.SetInt("numParticle", particleNumber);
         compute.SetFloat("deltaTime", deltaTime);
@@ -259,7 +354,9 @@ public class PBF3D : MonoBehaviour
         compute.SetVector("interactionInputPoint", new Vector2(0, 0));
         compute.SetFloat("interactionInputStrength", 0);
         compute.SetFloat("interactionInputRadius", 0);
+        compute.SetFloat("forceCoef", forceCoef);
     }
+
 
     public void checkMouseInterraction()
     {
@@ -291,6 +388,31 @@ public class PBF3D : MonoBehaviour
         velocitiesBuffer.SetData(velocities);
     }
 
+    public void debugDensities()
+    {
+        densitiesBuffer.GetData(densities);
+        //Debug.Log("density of the particle " + debug_particle_index.ToString() + " is: " + densities[debug_particle_index]);
+        Debug.Log("densities: " + string.Join(" ", densities));
+        //particlesObjects[debug_particle_index].GetComponent<Renderer>().material.color = Color.red;
+    }
+
+    public void debugNeighbors(int pi)
+    {
+        //set all the particles to blue
+        foreach(var particle in particlesObjects)
+        {
+            particle.GetComponent<Renderer>().material.color = Color.blue;
+        }
+
+        particlesObjects[pi].GetComponent<Renderer>().material.color = Color.blue;
+        for(int j = 0; j < neighborCounter[pi]; j++)
+        {
+            uint neighbor = particleNeighbors[pi * particleNumber + j];
+            if (neighbor == pi) continue;
+
+            particlesObjects[(int)neighbor].GetComponent<Renderer>().material.color = Color.red;
+        }
+    }
 
     void OnDestroy()
     {
@@ -312,7 +434,16 @@ public class PBF3D : MonoBehaviour
     void OnDrawGizmosSelected()
     {
         // Draw a cube to show the borders
-        Gizmos.color = new Color(0.2f, 0.2f, 0.2f, 0.5f);
+        Gizmos.color = new Color(0.2f, 0.2f, 0.2f, 0.1f);
         Gizmos.DrawCube(Vector3.zero, new Vector3(boundaryLengths.x, boundaryLengths.y, boundaryLengths.z));
+
+        /*Gizmos.color = Color.yellow;
+        for(float x = -10*smoothingRadius; x < 10*smoothingRadius; x+= smoothingRadius)
+        {
+            for(float z = -10*smoothingRadius; z < 10*smoothingRadius; z += smoothingRadius)
+            {
+                Gizmos.DrawLine(new Vector3(x, verticalBoundaries.x, z), new Vector3(x, verticalBoundaries.y, z));
+            }
+        }*/
     }
 }

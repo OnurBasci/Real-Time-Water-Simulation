@@ -16,6 +16,7 @@ static const int3 offsets3D[27] =
 // Constants used for hashing
 static const uint hashK1 = 15823;
 static const uint hashK2 = 9737333;
+static const uint hashK3 = 440817757;
 
 // Convert floating point position into an integer cell coordinate
 int3 GetCell3D(float3 position, float radius)
@@ -29,7 +30,8 @@ uint HashCell3D(int3 cell)
 	cell = (uint3)cell;
 	uint a = cell.x * hashK1;
 	uint b = cell.y * hashK2;
-	return (a + b);
+    uint c = cell.z * hashK3;
+	return (a + b + c);
 }
 
 uint KeyFromHash(uint hash, uint tableSize)

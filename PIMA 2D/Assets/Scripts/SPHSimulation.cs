@@ -188,7 +188,6 @@ public class SPHSimulation : MonoBehaviour
 
         appliedForce += addPressurseForce(particleIndex);
         appliedForce += addViscocityForce(particleIndex);
-        //appliedForce += addExternalForces();
 
         return appliedForce;
     }
@@ -200,8 +199,6 @@ public class SPHSimulation : MonoBehaviour
         Vector3 dir;
         float press_i = math.max(K_temp * (densities[particleIndex] - density),0);
         float press_j, dist;
-
-        Debug.Log(press_i);
 
         Particle pj;
 
@@ -218,34 +215,30 @@ public class SPHSimulation : MonoBehaviour
             press_j = math.max(K_temp * (densities[j] - density),0);
             f_pressure += (pj.mass * (press_i + press_j) / (2 * densities[j])) * gradientSpikyKernel(dist, smoothingRadius) * dir;
         }
-        return -(particles[particleIndex].mass / densities[particleIndex]) * f_pressure;
+        return -particles[particleIndex].mass * f_pressure;
     }
 
     private Vector3 addViscocityForce(int particleIndex)
     {
-        /*Vector3 f_viscocity = Vector3.zero;
+        Vector3 f_viscocity = Vector3.zero;
 
         Particle pi = particles[particleIndex];
         Particle pj;
 
-        Vector3 dir;
         float dist;
 
-        for(int j = 0; j < particleNumber; j++)
+        for(int j = 0; j < particleNumber; j ++)
         {
             if (j == particleIndex) continue;
 
             pj = particles[j];
 
-            dist = (predictedPositions[particleIndex] - predictedPositions[j]).magnitude;
+            dist = (predictedPositions[j] - predictedPositions[particleIndex]).magnitude;
 
-            dir = dist == 0 ? getRandomDirection() : (predictedPositions[j] - predictedPositions[particleIndex]) / dist;
-
-            f_viscocity += pj.mass * ((pj.velocity.magnitude - pi.velocity.magnitude) / densities[j]) * laplaceSpikyKernel(dist, smoothingRadius) *dir;
+            f_viscocity += pj.mass * (pj.velocity - pi.velocity) / densities[j] * laplaceSpikyKernel(dist, smoothingRadius);
         }
-        */
-        //return viscosityCoeff * f_viscocity;
-        return Vector3.zero;
+        
+        return viscosityCoeff * f_viscocity;
     }
 
     private Vector3 addExternalForces()
@@ -301,7 +294,7 @@ public class SPHSimulation : MonoBehaviour
     {
         if(r >= 0 && r <= h)
         {
-            return (90 / (math.PI * math.pow(h, 6))) * (h - r);
+            return 15 / (2* math.PI * math.pow(h, 3)) * math.pow(r,3)/(2*math.pow(h,3)) + r*r/math.pow(h,2) + h/(2*r);
         }
         return 0;
     }

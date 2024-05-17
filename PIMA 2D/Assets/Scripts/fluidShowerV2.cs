@@ -464,8 +464,6 @@ public class fluidShowerV2 : MonoBehaviour
                 }
             }
             int nFluid = fluidCells.Count;
-            //float[,] A = new float[nFluid, nFluid];
-            //float[] b = new float[nFluid];
 
             var A = Matrix<float>.Build.Dense(nFluid, nFluid);
             var b = Vector<float>.Build.Dense(nFluid);
